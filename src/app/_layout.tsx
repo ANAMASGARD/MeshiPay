@@ -1,7 +1,6 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -10,14 +9,23 @@ import { MeshipayWdkProvider } from '@/features/wdk/wdk-provider';
 
 SplashScreen.preventAutoHideAsync();
 
-function AppShell() {
-  const colorScheme = useColorScheme();
+const MeshipayDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#0B100B',
+    card: '#141A14',
+    primary: '#F5D033',
+  },
+};
 
+function AppShell() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={MeshipayDarkTheme}>
       <AnimatedSplashOverlay />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B100B' } }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="home" />
         <Stack.Screen name="pools" />
         <Stack.Screen name="explore" />
       </Stack>
