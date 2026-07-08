@@ -25,7 +25,7 @@ npm run verify   # lint (expo lint) + typecheck (tsc --noEmit)
 |--------|---------|
 | `70c81e8` | Ticket payment workflow — tab nav, P2P session QR, TicketsP2PProvider |
 | `0d60740` | Demo UI polish — session-derived P2P, wallet connect |
-| *(HEAD)* | Loading dots, slim QR, swipe tabs, payment re-broadcast, README/APK docs |
+| `18e0cf6` | Loading dots, slim QR, swipe tabs, payment re-broadcast, README/APK docs |
 
 ---
 
