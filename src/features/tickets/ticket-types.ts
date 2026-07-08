@@ -33,6 +33,8 @@ export type TicketRecord = {
   status: TicketStatus;
   checkInCode: string;
   notes?: string;
+  imageUri?: string;
+  ticketQrPayload?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -70,4 +72,12 @@ export type TicketDraftInput = {
   priceUsdt: string;
   quantity: number;
   notes?: string;
+  imageUri?: string;
+};
+
+export type SessionRole = 'receiver' | 'sender';
+
+export type ActiveSession = {
+  sessionId: string;
+  role: SessionRole;
 };

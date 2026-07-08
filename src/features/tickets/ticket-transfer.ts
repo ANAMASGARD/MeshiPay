@@ -15,6 +15,7 @@ export const ticketTransferPayloadSchema = z.object({
   priceUsdt: z.string().min(1),
   checkInCode: z.string().min(1),
   txHash: z.string().min(1),
+  imageUri: z.string().optional(),
 });
 
 export type TicketTransferPayload = z.infer<typeof ticketTransferPayloadSchema>;
@@ -33,6 +34,7 @@ export function toTransferPayload(ticket: TicketRecord, txHash: string): TicketT
     priceUsdt: ticket.priceUsdt,
     checkInCode: ticket.checkInCode,
     txHash,
+    imageUri: ticket.imageUri,
   };
 }
 
@@ -68,6 +70,7 @@ export function receivedTicketFromTransfer(
     txHash: payload.txHash,
     status: 'transferred',
     checkInCode: payload.checkInCode,
+    imageUri: payload.imageUri,
     createdAt: now,
     updatedAt: now,
   };

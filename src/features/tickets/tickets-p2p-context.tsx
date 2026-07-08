@@ -9,13 +9,15 @@ import {
   type ReactNode,
 } from 'react';
 
-import { fulfillPayment, startPaymentSession } from '@/features/tickets/payment-session';
+import { reduceTicketEvent } from '@/features/tickets/ticket-event-handler';
+import { startPaymentSession, validateAndJoinSession } from '@/features/tickets/payment-session';
 import {
   createTicketEventId,
   parseTicketEvent,
   type TicketEvent,
   type TicketEventInput,
 } from '@/features/tickets/ticket-events';
+import type { QrPayload } from '@/features/tickets/qr-payload';
 import {
   addAttendee,
   addReceivedTicket,
@@ -23,12 +25,7 @@ import {
   loadTickets,
   upsertTicket,
 } from '@/features/tickets/ticket-storage';
-import {
-  receivedTicketFromTransfer,
-  ticketTransferPayloadSchema,
-} from '@/features/tickets/ticket-transfer';
-import type { AttendeeRecord, TicketRecord } from '@/features/tickets/ticket-types';
-import { useUserRole } from '@/hooks/use-user-role';
+import type { ActiveSession, AttendeeRecord, TicketRecord } from '@/features/tickets/ticket-types';
 import { useP2PRoom } from '@/services/p2p/p2p-room';
 
 type TicketsP2PContextValue = {
@@ -39,31 +36,43 @@ type TicketsP2PContextValue = {
   peerCount: number;
   isActive: boolean;
   activeTopic: string | null;
+  activeSession: ActiveSession | null;
   joinRoom: (topic: string) => void;
   leaveRoom: () => void;
   broadcastTicketEvent: (partial: TicketEventInput) => TicketEvent;
-  beginPaymentSession: (ticket: TicketRecord, priceUsdt: string, receiverAddress: string) => Promise<{
-    ticket: TicketRecord;
-    qrString: string;
-  }>;
+  beginPaymentSession: (
+    ticket: TicketRecord,
+    priceUsdt: string,
+    receiverAddress: string,
+  ) => Promise<{ ticket: TicketRecord; qrString: string }>;
+  joinPaymentSessionAsSender: (
+    raw: string,
+    senderAddress: string,
+  ) => Promise<{ ok: true; payload: QrPayload } | { ok: false; reason: string }>;
+  clearActiveSession: () => void;
 };
 
 const TicketsP2PContext = createContext<TicketsP2PContextValue | null>(null);
 
 export function TicketsP2PProvider({ children }: { children: ReactNode }) {
   const p2p = useP2PRoom();
-  const { role } = useUserRole();
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [attendees, setAttendees] = useState<AttendeeRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
 
   const lastEventIndexRef = useRef(0);
   const processedPaymentsRef = useRef(new Set<string>());
   const ticketsRef = useRef<TicketRecord[]>([]);
+  const activeSessionRef = useRef<ActiveSession | null>(null);
 
   useEffect(() => {
     ticketsRef.current = tickets;
   }, [tickets]);
+
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
 
   const refresh = useCallback(async () => {
     const [nextTickets, nextAttendees] = await Promise.all([loadTickets(), loadAttendees()]);
@@ -91,6 +100,10 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
     [p2p],
   );
 
+  const clearActiveSession = useCallback(() => {
+    setActiveSession(null);
+  }, []);
+
   const beginPaymentSession = useCallback(
     async (ticket: TicketRecord, priceUsdt: string, receiverAddress: string) => {
       const started = await startPaymentSession({ ticket, priceUsdt, receiverAddress });
@@ -103,27 +116,46 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
         next[index] = started.ticket;
         return next;
       });
+      setActiveSession({ sessionId: started.payload.sessionId, role: 'receiver' });
       p2p.joinRoom(started.payload.topic);
-      broadcastTicketEvent({
-        type: 'SESSION_CREATED',
-        sessionId: started.payload.sessionId,
-        topic: started.payload.topic,
-        ticketId: started.ticket.ticketId,
-        receiverAddress,
-        eventName: started.ticket.eventName,
-        priceUsdt: started.ticket.priceUsdt,
-      });
-      broadcastTicketEvent({
-        type: 'HELLO',
-        sessionId: started.payload.sessionId,
-        role: 'receiver',
-        walletAddress: receiverAddress,
-        appVersion: '1.0.0',
-      });
+      started.bootstrapEvents.forEach((partial) => broadcastTicketEvent(partial));
       return { ticket: started.ticket, qrString: started.qrString };
     },
     [broadcastTicketEvent, p2p],
   );
+
+  const joinPaymentSessionAsSender = useCallback(
+    async (raw: string, senderAddress: string) => {
+      const result = await validateAndJoinSession(raw);
+      if (!result.ok) {
+        return result;
+      }
+
+      setActiveSession({ sessionId: result.payload.sessionId, role: 'sender' });
+      p2p.joinRoom(result.payload.topic);
+      broadcastTicketEvent({
+        type: 'HELLO',
+        sessionId: result.payload.sessionId,
+        role: 'sender',
+        walletAddress: senderAddress,
+        appVersion: '1.0.0',
+      });
+      broadcastTicketEvent({
+        type: 'PAYMENT_REQUESTED',
+        sessionId: result.payload.sessionId,
+        senderAddress,
+        amountUsdt: result.payload.priceUsdt,
+      });
+
+      return result;
+    },
+    [broadcastTicketEvent, p2p],
+  );
+
+  const leaveRoom = useCallback(() => {
+    p2p.leaveRoom();
+    setActiveSession(null);
+  }, [p2p]);
 
   useEffect(() => {
     const newEvents = p2p.events.slice(lastEventIndexRef.current);
@@ -138,39 +170,31 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (event.type === 'TICKET_TRANSFERRED' && role !== 'receiver') {
-        const payload = ticketTransferPayloadSchema.safeParse(event.payload);
-        if (!payload.success) {
-          return;
-        }
-        const received = receivedTicketFromTransfer(event, payload.data);
-        addReceivedTicket(received)
-          .then(setTickets)
-          .catch(() => undefined);
+      const effect = reduceTicketEvent(
+        {
+          tickets: ticketsRef.current,
+          activeSession: activeSessionRef.current,
+          processedPayments: processedPaymentsRef.current,
+        },
+        event,
+      );
+
+      if (effect.type === 'none') {
+        return;
       }
 
-      if (event.type === 'PAYMENT_SUBMITTED' && role === 'receiver') {
-        const paymentKey = `${event.sessionId}-${event.txHash}`;
-        if (processedPaymentsRef.current.has(paymentKey)) {
-          return;
-        }
+      if (effect.type === 'persist_received') {
+        addReceivedTicket(effect.ticket)
+          .then(setTickets)
+          .catch(() => undefined);
+        return;
+      }
+
+      if (effect.type === 'fulfill_payment') {
+        const paymentKey = `${event.sessionId}-${(event as Extract<TicketEvent, { type: 'PAYMENT_SUBMITTED' }>).txHash}`;
         processedPaymentsRef.current.add(paymentKey);
-
-        const ticket = ticketsRef.current.find(
-          (item) => item.sessionId === event.sessionId && item.kind === 'issued',
-        );
-        if (!ticket) {
-          return;
-        }
-
-        const receiverAddress = ticket.receiverAddress;
-        const result = fulfillPayment({ ticket, payment: event, receiverAddress });
-        result.events.forEach((partial) => broadcastTicketEvent(partial));
-
-        Promise.all([
-          upsertTicket(result.updatedTicket),
-          addAttendee(result.attendee),
-        ])
+        effect.broadcast.forEach((partial) => broadcastTicketEvent(partial));
+        Promise.all([upsertTicket(effect.ticket), addAttendee(effect.attendee)])
           .then(([nextTickets, nextAttendees]) => {
             setTickets(nextTickets);
             setAttendees(nextAttendees);
@@ -178,7 +202,7 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
           .catch(() => undefined);
       }
     });
-  }, [broadcastTicketEvent, p2p.events, role]);
+  }, [broadcastTicketEvent, p2p.events]);
 
   const value = useMemo<TicketsP2PContextValue>(
     () => ({
@@ -189,20 +213,26 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
       peerCount: p2p.peerCount,
       isActive: p2p.isActive,
       activeTopic: p2p.activeTopic,
+      activeSession,
       joinRoom: p2p.joinRoom,
-      leaveRoom: p2p.leaveRoom,
+      leaveRoom,
       broadcastTicketEvent,
       beginPaymentSession,
+      joinPaymentSessionAsSender,
+      clearActiveSession,
     }),
     [
+      activeSession,
       attendees,
       beginPaymentSession,
       broadcastTicketEvent,
+      clearActiveSession,
+      joinPaymentSessionAsSender,
+      leaveRoom,
       loading,
       p2p.activeTopic,
       p2p.isActive,
       p2p.joinRoom,
-      p2p.leaveRoom,
       p2p.peerCount,
       refresh,
       tickets,

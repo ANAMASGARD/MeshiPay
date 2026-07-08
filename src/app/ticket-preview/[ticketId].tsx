@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
-import { ReceiverSessionCard } from '@/components/receiver/receiver-session-card';
+import { PaymentQrModal } from '@/components/receiver/payment-qr-modal';
+import { QrCodeView } from '@/components/tickets/qr-code-view';
 import { TicketPreviewCard } from '@/components/tickets/ticket-preview-card';
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -21,9 +22,8 @@ export default function TicketPreviewScreen() {
 
   const [ticket, setTicket] = useState<TicketRecord | null>(null);
   const [priceDraft, setPriceDraft] = useState('');
-  const [qrString, setQrString] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [qrModal, setQrModal] = useState<string | null>(null);
 
   const walletReady = state.status === 'READY' && !!address;
 
@@ -41,10 +41,6 @@ export default function TicketPreviewScreen() {
         }
         setTicket(loaded);
         setPriceDraft(loaded.priceUsdt);
-        if (loaded.qrPayload) {
-          setQrString(loaded.qrPayload);
-          setSessionId(loaded.sessionId ?? null);
-        }
       })
       .catch(() => undefined);
   }, [router, ticketId]);
@@ -59,32 +55,17 @@ export default function TicketPreviewScreen() {
     }
   }, [p2p.tickets, ticketId]);
 
-  const handleStartSession = useCallback(async () => {
+  const handleReceivePayment = useCallback(() => {
     if (!walletReady || !address || !ticket) {
-      Alert.alert('Wallet required', 'Unlock your wallet before receiving payments.');
+      Alert.alert('Wallet required', 'Connect your wallet before receiving payments.');
       return;
     }
-
     if (ticket.remainingQuantity <= 0) {
       Alert.alert('Sold out', 'No tickets remaining for this offer.');
       return;
     }
-
-    setStarting(true);
-    try {
-      const started = await p2p.beginPaymentSession(ticket, priceDraft.trim() || ticket.priceUsdt, address);
-      setTicket(started.ticket);
-      setQrString(started.qrString);
-      setSessionId(started.ticket.sessionId ?? null);
-    } catch (error) {
-      Alert.alert(
-        'Session failed',
-        error instanceof Error ? error.message : 'Unable to start payment session.',
-      );
-    } finally {
-      setStarting(false);
-    }
-  }, [address, p2p, priceDraft, ticket, walletReady]);
+    setShowPaymentModal(true);
+  }, [address, ticket, walletReady]);
 
   if (!ticket) {
     return (
@@ -97,7 +78,11 @@ export default function TicketPreviewScreen() {
   return (
     <PitchScreen>
       <Text style={styles.heading}>TICKET PREVIEW</Text>
-      <TicketPreviewCard ticket={ticket} />
+      <TicketPreviewCard
+        ticket={ticket}
+        qrValue={ticket.ticketQrPayload}
+        onQrPress={ticket.ticketQrPayload ? () => setQrModal(ticket.ticketQrPayload!) : undefined}
+      />
 
       <View style={styles.priceRow}>
         <Text style={styles.priceLabel}>PRICE (USDT)</Text>
@@ -106,24 +91,31 @@ export default function TicketPreviewScreen() {
           value={priceDraft}
           onChangeText={setPriceDraft}
           keyboardType="decimal-pad"
-          editable={!qrString}
         />
       </View>
 
-      {!qrString ? (
-        <NeoBrutalButton
-          label="RECEIVE PAYMENT"
-          disabled={!walletReady || starting}
-          onPress={handleStartSession}
+      <NeoBrutalButton
+        label="RECEIVE PAYMENT"
+        disabled={!walletReady}
+        onPress={handleReceivePayment}
+      />
+
+      {showPaymentModal ? (
+        <PaymentQrModal
+          visible
+          ticket={{ ...ticket, priceUsdt: priceDraft.trim() || ticket.priceUsdt }}
+          onClose={() => setShowPaymentModal(false)}
         />
-      ) : (
-        <ReceiverSessionCard
-          ticket={ticket}
-          qrPayload={qrString}
-          peerCount={p2p.peerCount}
-          sessionId={sessionId ?? ''}
-        />
-      )}
+      ) : null}
+
+      <Modal visible={qrModal !== null} transparent animationType="fade" onRequestClose={() => setQrModal(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setQrModal(null)}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>TICKET QR</Text>
+            {qrModal ? <QrCodeView value={qrModal} size={220} /> : null}
+          </View>
+        </Pressable>
+      </Modal>
     </PitchScreen>
   );
 }
@@ -160,5 +152,27 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 18,
     fontWeight: '900',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    borderWidth: 3,
+    borderColor: MeshipayBrand.border,
+    borderRadius: 16,
+    backgroundColor: MeshipayBrand.backgroundElevated,
+    padding: 20,
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitle: {
+    color: MeshipayBrand.primary,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
 });

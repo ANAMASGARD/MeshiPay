@@ -1,18 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { SepoliaBadge } from '@/components/wallet/sepolia-badge';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import type { WdkAppState } from '@/features/wdk/wdk-types';
+import { shortWalletAddress } from '@/components/wallet/wallet-utils';
 
 type WalletStatusCardProps = {
   status: WdkAppState['status'];
   address?: string | null;
   statusLabel: string;
 };
-
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
 
 export function WalletStatusCard({ status, address, statusLabel }: WalletStatusCardProps) {
   const ready = status === 'READY';
@@ -21,14 +17,11 @@ export function WalletStatusCard({ status, address, statusLabel }: WalletStatusC
     <View style={styles.wrap}>
       <View style={styles.shadow} />
       <View style={styles.card}>
-        <Text style={styles.title}>WDK WALLET</Text>
-        <SepoliaBadge />
+        <Text style={styles.title}>WALLET</Text>
         <Text style={[styles.status, ready ? styles.statusReady : null]}>{statusLabel}</Text>
         {ready && address ? (
-          <Text style={styles.address}>{shortAddress(address)}</Text>
-        ) : (
-          <Text style={styles.hint}>Connect your Tether wallet first.</Text>
-        )}
+          <Text style={styles.address}>{shortWalletAddress(address)}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -77,12 +70,6 @@ const styles = StyleSheet.create({
     color: MeshipayBrand.foreground,
     fontSize: 13,
     fontFamily: 'monospace',
-    marginTop: 4,
-  },
-  hint: {
-    color: MeshipayBrand.muted,
-    fontSize: 13,
-    textAlign: 'center',
     marginTop: 4,
   },
 });

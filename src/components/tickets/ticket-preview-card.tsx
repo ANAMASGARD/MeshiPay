@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { QrCodeView } from '@/components/tickets/qr-code-view';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -9,13 +10,17 @@ type TicketPreviewCardProps = {
   ticket: TicketRecord;
   qrValue?: string;
   compact?: boolean;
+  onQrPress?: () => void;
 };
 
-export function TicketPreviewCard({ ticket, qrValue, compact }: TicketPreviewCardProps) {
+export function TicketPreviewCard({ ticket, qrValue, compact, onQrPress }: TicketPreviewCardProps) {
   return (
     <View style={styles.wrap}>
       <View style={styles.shadow} />
       <View style={[styles.card, compact ? styles.cardCompact : null]}>
+        {ticket.imageUri ? (
+          <Image source={{ uri: ticket.imageUri }} style={styles.cover} contentFit="cover" />
+        ) : null}
         <View style={styles.header}>
           <Text style={styles.event}>{ticket.eventName}</Text>
           <Text style={styles.teams}>
@@ -28,15 +33,19 @@ export function TicketPreviewCard({ ticket, qrValue, compact }: TicketPreviewCar
         </Text>
         <View style={styles.priceRow}>
           <Text style={styles.price}>{ticket.priceUsdt} USDT</Text>
-          <Text style={styles.network}>Sepolia testnet</Text>
         </View>
         {ticket.remainingQuantity > 0 ? (
           <Text style={styles.stock}>{ticket.remainingQuantity} tickets left</Text>
         ) : null}
         {qrValue ? (
-          <View style={styles.qrWrap}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={!onQrPress}
+            onPress={onQrPress}
+            style={styles.qrWrap}>
             <QrCodeView value={qrValue} size={compact ? 120 : 160} />
-          </View>
+            {onQrPress ? <Text style={styles.qrHint}>Tap to enlarge</Text> : null}
+          </Pressable>
         ) : null}
         {ticket.checkInCode ? (
           <Text style={styles.checkIn}>Check-in: {ticket.checkInCode}</Text>
@@ -64,8 +73,17 @@ const styles = StyleSheet.create({
     backgroundColor: MeshipayBrand.cream,
     padding: 16,
     gap: 6,
+    overflow: 'hidden',
   },
   cardCompact: { padding: 12 },
+  cover: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: MeshipayBrand.border,
+    marginBottom: 4,
+  },
   header: { gap: 2 },
   event: {
     color: MeshipayBrand.border,
@@ -95,18 +113,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
   },
-  network: {
-    color: MeshipayBrand.accentGreen,
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
   stock: {
     color: MeshipayBrand.border,
     fontSize: 12,
     fontWeight: '700',
   },
-  qrWrap: { alignItems: 'center', marginTop: 10 },
+  qrWrap: { alignItems: 'center', marginTop: 10, gap: 4 },
+  qrHint: {
+    color: MeshipayBrand.border,
+    fontSize: 11,
+    fontWeight: '700',
+    opacity: 0.7,
+  },
   checkIn: {
     color: MeshipayBrand.border,
     fontSize: 12,

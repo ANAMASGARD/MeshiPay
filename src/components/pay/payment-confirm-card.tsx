@@ -1,7 +1,6 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
-import { SepoliaBadge } from '@/components/wallet/sepolia-badge';
 import { formatMatchWindow, shortAddress } from '@/features/tickets/payment-helpers';
 import type { QrPayload } from '@/features/tickets/qr-payload';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -26,7 +25,6 @@ export function PaymentConfirmCard({
       <View style={styles.shadow} />
       <View style={styles.card}>
         <Text style={styles.heading}>CONFIRM PAYMENT</Text>
-        <SepoliaBadge />
         <Text style={styles.event}>{payload.eventName}</Text>
         <Text style={styles.teams}>
           {payload.homeTeam} vs {payload.awayTeam}
@@ -38,16 +36,12 @@ export function PaymentConfirmCard({
         <Text style={styles.meta}>Receiver: {shortAddress(payload.receiverAddress)}</Text>
         <View style={styles.priceBox}>
           <Text style={styles.price}>{payload.priceUsdt}</Text>
-          <Text style={styles.currency}>USDT (Sepolia)</Text>
+          <Text style={styles.currency}>USDT</Text>
         </View>
         <Text style={styles.peer}>
           {peerCount > 0 ? `Connected (${peerCount} peer)` : 'Joining P2P session...'}
         </Text>
-        <NeoBrutalButton
-          label="PAY & UNLOCK TICKET"
-          disabled={loading}
-          onPress={onPay}
-        />
+        <NeoBrutalButton label="PAY & UNLOCK TICKET" disabled={loading} onPress={onPay} />
         {loading ? <ActivityIndicator color={MeshipayBrand.primary} /> : null}
         <NeoBrutalButton label="CANCEL" variant="secondary" onPress={onCancel} />
       </View>

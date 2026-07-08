@@ -6,15 +6,16 @@ const config = getDefaultConfig(__dirname);
 
 const blockList = config.resolver.blockList;
 const bareKitBuildBlock = /vendor\/bare-kit\/build\/.*/;
+const nativeHelperBuildBlock = /plugins\/nativehelper-lib\/build\/.*/;
 
 config.resolver = {
   ...config.resolver,
   nodeModulesPaths: [path.resolve(__dirname, 'node_modules')],
   blockList: Array.isArray(blockList)
-    ? [...blockList, bareKitBuildBlock]
+    ? [...blockList, bareKitBuildBlock, nativeHelperBuildBlock]
     : blockList
-      ? [blockList, bareKitBuildBlock]
-      : [bareKitBuildBlock],
+      ? [blockList, bareKitBuildBlock, nativeHelperBuildBlock]
+      : [bareKitBuildBlock, nativeHelperBuildBlock],
 };
 
 module.exports = configureMetroForWDK(config);

@@ -32,7 +32,7 @@ function statusBadge(status: TicketRecord['status']): { label: string; color: st
 
 export function TicketCard({ ticket, onPress }: TicketCardProps) {
   const badge = statusBadge(ticket.status);
-  const qrSeed = ticket.qrPayload ?? ticket.ticketId;
+  const qrSeed = ticket.ticketQrPayload ?? ticket.qrPayload ?? ticket.ticketId;
 
   const body = (
     <View style={styles.wrap}>
@@ -58,7 +58,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
             </Text>
           </Text>
           <Text style={styles.metaLabel}>
-            Price: <Text style={styles.metaValue}>{ticket.priceUsdt} USDT (Sepolia)</Text>
+            Price: <Text style={styles.metaValue}>{ticket.priceUsdt} USDT</Text>
           </Text>
           {ticket.txHash ? (
             <Text style={styles.metaLabel}>

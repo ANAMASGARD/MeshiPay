@@ -1,7 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { AttendeeRecord, TicketDraftInput, TicketRecord } from '@/features/tickets/ticket-types';
-import { createCheckInCode } from '@/features/tickets/qr-payload';
+import { buildTicketOfferQr, createCheckInCode } from '@/features/tickets/qr-payload';
+import type {
+  AttendeeRecord,
+  PaymentSession,
+  TicketDraftInput,
+  TicketRecord,
+} from '@/features/tickets/ticket-types';
 
 const TICKETS_KEY = '@meshipay/tickets_v2';
 const ATTENDEES_KEY = '@meshipay/attendees_v1';
@@ -94,6 +99,36 @@ export async function markSessionPaid(sessionId: string): Promise<void> {
   await AsyncStorage.setItem(PAID_SESSIONS_KEY, JSON.stringify([sessionId, ...paid]));
 }
 
+function isPaymentSession(item: unknown): item is PaymentSession {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    typeof (item as PaymentSession).sessionId === 'string'
+  );
+}
+
+export async function loadPaymentSessions(): Promise<PaymentSession[]> {
+  const raw = await AsyncStorage.getItem(SESSIONS_KEY);
+  return parseArray(raw, isPaymentSession);
+}
+
+export async function savePaymentSession(session: PaymentSession): Promise<void> {
+  const sessions = await loadPaymentSessions();
+  const index = sessions.findIndex((item) => item.sessionId === session.sessionId);
+  const next = [...sessions];
+  if (index >= 0) {
+    next[index] = session;
+  } else {
+    next.unshift(session);
+  }
+  await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(next));
+}
+
+export async function getPaymentSession(sessionId: string): Promise<PaymentSession | null> {
+  const sessions = await loadPaymentSessions();
+  return sessions.find((item) => item.sessionId === sessionId) ?? null;
+}
+
 export function createTicketFromDraft(
   input: TicketDraftInput,
   receiverAddress: string,
@@ -118,8 +153,21 @@ export function createTicketFromDraft(
     status: 'draft',
     checkInCode: createCheckInCode(),
     notes: input.notes?.trim(),
+    imageUri: input.imageUri,
     createdAt: timestamp,
     updatedAt: timestamp,
+  };
+}
+
+export async function createTicketFromDraftWithQr(
+  input: TicketDraftInput,
+  receiverAddress: string,
+): Promise<TicketRecord> {
+  const ticket = createTicketFromDraft(input, receiverAddress);
+  const offerQr = await buildTicketOfferQr({ ticket, receiverAddress });
+  return {
+    ...ticket,
+    ticketQrPayload: JSON.stringify(offerQr),
   };
 }
 

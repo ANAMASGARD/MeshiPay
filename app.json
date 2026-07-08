@@ -31,6 +31,12 @@
           "cameraPermission": "Allow Meshipay to scan gate QR codes for ticket payments."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Meshipay needs photo access to add a cover image to your ticket."
+        }
+      ],
       "./plugins/withNativeHelperLibs.js",
       "./plugins/withAndroidSubprojects.js",
       "./plugins/withAndroid16KbPageSize.js",

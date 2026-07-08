@@ -1,3 +1,5 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -5,7 +7,8 @@ import type { TicketRecord } from '@/features/tickets/ticket-types';
 
 type TicketOfferListProps = {
   tickets: TicketRecord[];
-  onSelect: (ticketId: string) => void;
+  onView: (ticketId: string) => void;
+  onReceivePayment: (ticket: TicketRecord) => void;
 };
 
 function statusLabel(status: TicketRecord['status']): string {
@@ -27,33 +30,56 @@ function statusLabel(status: TicketRecord['status']): string {
   }
 }
 
-export function TicketOfferList({ tickets, onSelect }: TicketOfferListProps) {
+export function TicketOfferList({ tickets, onView, onReceivePayment }: TicketOfferListProps) {
   const issued = tickets.filter((ticket) => ticket.kind === 'issued');
 
   if (issued.length === 0) {
-    return <Text style={styles.empty}>No ticket offers yet. Create one to start receiving payments.</Text>;
+    return (
+      <Text style={styles.empty}>No tickets yet. Create one to start receiving payments.</Text>
+    );
   }
 
   return (
     <View style={styles.wrap}>
       {issued.map((ticket) => (
-        <Pressable
-          key={ticket.ticketId}
-          accessibilityRole="button"
-          onPress={() => onSelect(ticket.ticketId)}
-          style={styles.row}>
+        <View key={ticket.ticketId} style={styles.row}>
           <View style={styles.rowShadow} />
           <View style={styles.rowBody}>
-            <Text style={styles.title}>{ticket.eventName}</Text>
-            <Text style={styles.sub}>
-              {ticket.homeTeam} vs {ticket.awayTeam}
-            </Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.price}>{ticket.priceUsdt} USDT</Text>
-              <Text style={styles.status}>{statusLabel(ticket.status)}</Text>
+            <View style={styles.topRow}>
+              {ticket.imageUri ? (
+                <Image source={{ uri: ticket.imageUri }} style={styles.thumb} contentFit="cover" />
+              ) : (
+                <View style={styles.thumbPlaceholder}>
+                  <MaterialCommunityIcons name="ticket" size={24} color={MeshipayBrand.muted} />
+                </View>
+              )}
+              <View style={styles.info}>
+                <Text style={styles.title}>{ticket.eventName}</Text>
+                <Text style={styles.sub}>
+                  {ticket.homeTeam} vs {ticket.awayTeam}
+                </Text>
+                <View style={styles.metaRow}>
+                  <Text style={styles.price}>{ticket.priceUsdt} USDT</Text>
+                  <Text style={styles.status}>{statusLabel(ticket.status)}</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.actions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onView(ticket.ticketId)}
+                style={styles.actionBtn}>
+                <Text style={styles.actionText}>VIEW</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onReceivePayment(ticket)}
+                style={[styles.actionBtn, styles.actionPrimary]}>
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>RECEIVE PAYMENT</Text>
+              </Pressable>
             </View>
           </View>
-        </Pressable>
+        </View>
       ))}
     </View>
   );
@@ -83,8 +109,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: MeshipayBrand.backgroundElevated,
     padding: 14,
-    gap: 4,
+    gap: 10,
   },
+  topRow: { flexDirection: 'row', gap: 12 },
+  thumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: MeshipayBrand.border,
+  },
+  thumbPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: MeshipayBrand.border,
+    backgroundColor: MeshipayBrand.pitchLine,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  info: { flex: 1, gap: 4 },
   title: {
     color: MeshipayBrand.foreground,
     fontSize: 15,
@@ -95,4 +140,26 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   price: { color: MeshipayBrand.primary, fontSize: 14, fontWeight: '900' },
   status: { color: MeshipayBrand.muted, fontSize: 11, fontWeight: '800' },
+  actions: { flexDirection: 'row', gap: 8 },
+  actionBtn: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: MeshipayBrand.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    backgroundColor: MeshipayBrand.background,
+  },
+  actionPrimary: {
+    backgroundColor: MeshipayBrand.primary,
+  },
+  actionText: {
+    color: MeshipayBrand.foreground,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  actionTextPrimary: {
+    color: MeshipayBrand.border,
+  },
 });

@@ -6,35 +6,24 @@ import { Alert, Linking, StyleSheet, Text } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { NeoBrutalMenuRow } from '@/components/ui/neo-brutal-menu-row';
-import { SepoliaBadge } from '@/components/wallet/sepolia-badge';
+import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
+import { shortWalletAddress } from '@/components/wallet/wallet-utils';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { clearTicketData } from '@/features/tickets/ticket-storage';
-import { useAccount, useWdkApp, useWalletManager } from '@/features/wdk/wdk-hooks';
-import { useUserRole } from '@/hooks/use-user-role';
 import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
-
-function shortAddress(address: string | null | undefined): string {
-  if (!address) {
-    return 'No address';
-  }
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
+import { useAccount, useWdkApp, useWalletManager } from '@/features/wdk/wdk-hooks';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { state } = useWdkApp();
   const { lock, getMnemonic } = useWalletManager();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
-  const { role, setRole, clearRole } = useUserRole();
   const p2p = useTicketsP2P();
   const [cameraPermission] = useCameraPermissions();
 
-  const profileLabel =
-    role === 'sender'
-      ? `Fan (${shortAddress(address)})`
-      : role === 'receiver'
-        ? `Gatekeeper (${shortAddress(address)})`
-        : `Meshipay User (${shortAddress(address)})`;
+  const profileLabel = address
+    ? `Meshipay User (${shortWalletAddress(address)})`
+    : 'Meshipay User';
 
   const p2pStatus =
     p2p.peerCount > 0
@@ -44,9 +33,7 @@ export default function SettingsScreen() {
         : 'Hyperswarm: Offline';
 
   const demoReady =
-    state.status === 'READY' && !!address && !!role
-      ? 'Wallet + role ready for demo'
-      : 'Complete wallet unlock and role selection';
+    state.status === 'READY' && !!address ? 'Wallet ready for demo' : 'Connect wallet to start';
 
   const handleLogout = useCallback(() => {
     Alert.alert('Log out', 'Lock wallet and return to onboarding?', [
@@ -56,38 +43,36 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           lock();
-          clearRole().finally(() => {
-            router.replace('/');
-          });
+          router.replace('/');
         },
       },
     ]);
-  }, [clearRole, lock, router]);
+  }, [lock, router]);
 
   const handleWallet = useCallback(() => {
     if (state.status !== 'READY' || !address) {
-      Alert.alert('Wallet locked', 'Unlock your wallet on the Gate tab first.');
+      Alert.alert('Wallet locked', 'Connect your wallet first.');
       return;
     }
-    Alert.alert('WDK Wallet', address);
+    Alert.alert('Wallet address', address);
   }, [address, state.status]);
 
   const handleBackup = useCallback(async () => {
     if (state.status !== 'READY') {
-      Alert.alert('Wallet locked', 'Unlock your wallet first.');
+      Alert.alert('Wallet locked', 'Connect your wallet first.');
       return;
     }
     try {
       const phrase = await getMnemonic('meshipay-main');
       if (!phrase) {
-        Alert.alert('Unavailable', 'Seed phrase not available for this wallet.');
+        Alert.alert('Unavailable', 'Recovery phrase not available for this wallet.');
         return;
       }
-      Alert.alert('Seed phrase', phrase);
+      Alert.alert('Recovery phrase', phrase);
     } catch (error) {
       Alert.alert(
         'Backup failed',
-        error instanceof Error ? error.message : 'Unable to read seed phrase.',
+        error instanceof Error ? error.message : 'Unable to read recovery phrase.',
       );
     }
   }, [getMnemonic, state.status]);
@@ -107,24 +92,11 @@ export default function SettingsScreen() {
     ]);
   }, []);
 
-  const handleSwitchRole = useCallback(() => {
-    Alert.alert('Switch role', 'Choose your demo role', [
-      {
-        text: 'Sender (Fan)',
-        onPress: () => setRole('sender').catch(() => undefined),
-      },
-      {
-        text: 'Receiver (Gatekeeper)',
-        onPress: () => setRole('receiver').catch(() => undefined),
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [setRole]);
-
   return (
     <PitchScreen>
       <Text style={styles.heading}>SETTINGS</Text>
-      <SepoliaBadge />
+
+      <WalletConnectButton showImport />
 
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="account-circle-outline" size={28} color={MeshipayBrand.border} />}
@@ -138,21 +110,15 @@ export default function SettingsScreen() {
       />
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="wallet-outline" size={28} color={MeshipayBrand.border} />}
-        subtitle="View Address & Backup"
-        title="WDK WALLET"
+        subtitle="View address"
+        title="WALLET"
         onPress={handleWallet}
       />
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="lock-outline" size={28} color={MeshipayBrand.border} />}
-        subtitle="Backup seed phrase"
+        subtitle="Backup recovery phrase"
         title="SECURITY"
         onPress={handleBackup}
-      />
-      <NeoBrutalMenuRow
-        icon={<MaterialCommunityIcons name="swap-horizontal" size={28} color={MeshipayBrand.border} />}
-        subtitle={role ? `Current: ${role}` : 'Not selected'}
-        title="SWITCH ROLE"
-        onPress={handleSwitchRole}
       />
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="ticket-outline" size={28} color={MeshipayBrand.border} />}

@@ -14,7 +14,7 @@ function shareReceipt(ticket: TicketRecord) {
   const lines = [
     `Meshipay Ticket — ${ticket.eventName}`,
     `${ticket.homeTeam} vs ${ticket.awayTeam}`,
-    `Price: ${ticket.priceUsdt} USDT (Sepolia)`,
+    `Price: ${ticket.priceUsdt} USDT`,
     ticket.txHash ? `Tx: ${ticket.txHash}` : null,
     ticket.receiptId ? `Receipt: ${ticket.receiptId}` : null,
     `Check-in: ${ticket.checkInCode}`,

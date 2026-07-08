@@ -87,7 +87,7 @@ export function useWalletSetup() {
       const walletId = `meshipay-restored-${Date.now()}`;
       await restoreWallet(normalized, walletId);
       setModalMode(null);
-      Alert.alert('Wallet restored', 'Your WDK wallet is ready on this device.');
+      Alert.alert('Wallet restored', 'Your wallet is ready on this device.');
     } catch (error) {
       Alert.alert(
         'Restore failed',
