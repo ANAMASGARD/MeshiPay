@@ -1,56 +1,62 @@
-# Welcome to your Expo app 👋
+# Meshipay
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Football group tipping for the Tether Developers Cup — combines **WDK** (self-custodial Sepolia wallet) and **Pears Stack** (Hyperswarm P2P fan rooms).
 
-## Get started
+## Prerequisites
 
-1. Install dependencies
+- Node.js 18+
+- Android SDK with API 29+ emulator or physical device
+- Do **not** use Expo Go — this app requires a dev client build
 
-   ```bash
-   npm install
-   ```
+## Setup
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+See **[AGENTS.md](./AGENTS.md)** for the full agent runbook. Quick start:
 
 ```bash
-npm run reset-project
+npm install --legacy-peer-deps
+npm run android:device
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+That script handles USB port forwarding, device selection, bundle generation when needed, native build, and install. For native/plugin changes use `npm run android:recover`.
 
-### Other setup steps
+**Metro (separate terminal, for JS reload during dev):**
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+source scripts/android-env.sh
+export REACT_NATIVE_PACKAGER_HOSTNAME=localhost
+adb reverse tcp:8081 tcp:8081
+npm start
+```
 
-## Learn more
+Open the **meshipay** app on your phone (not Expo Go). Shake → Reload after JS edits.
 
-To learn more about developing your project with Expo, look at the following resources:
+## App tabs
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- **Home** — create/unlock WDK wallet on Sepolia
+- **Pools** — create or join Hyperswarm tip rooms, pledge USDT, settle on-chain
+- **Explore** — starter info
 
-## Join the community
+## Architecture
 
-Join our community of developers creating universal apps.
+- `WdkAppProvider` + `.wdk-bundle/wdk-worklet.bundle.js` → WDK HRPC worklet (types in `.wdk/`)
+- `p2p-room.ts` + `p2p-worklet.bundle.js` → Hyperswarm topic rooms (lazy-started on Pools tab)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+See `docs/superpowers/specs/2026-07-07-meshipay-dual-track-design.md` for full design.
+
+## Demo flow
+
+1. Device A: create wallet → Pools → create "World Cup Final" pool
+2. Device B: join same room topic → pledge tip
+3. Device A: settle on Sepolia → `TIP_SETTLED` appears on both devices
+
+## External services
+
+- Sepolia RPC: `https://rpc.sepolia.org`
+- Candide bundler (public)
+- Hyperswarm DHT (decentralized)
+
+## Verification
+
+```bash
+npm run verify
+```

@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,7 +50,13 @@ export default function TabTwoScreen() {
                 <ThemedText type="link">Expo documentation</ThemedText>
                 <SymbolView
                   tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
+                  name={
+                    Platform.select({
+                      ios: 'arrow.up.right.square',
+                      android: 'link',
+                      default: 'link',
+                    }) as SymbolViewProps['name']
+                  }
                   size={12}
                 />
               </ThemedView>

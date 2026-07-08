@@ -1,3 +1,5 @@
+// Unused on native — kept for reference. Native tabs API differs on SDK 54.
+// @ts-nocheck
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
@@ -5,7 +7,7 @@ import { Colors } from '@/constants/theme';
 
 export default function AppTabs() {
   const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
+  const colors = Colors[scheme ?? 'light'];
 
   return (
     <NativeTabs
@@ -16,6 +18,14 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/home.png')}
+          renderingMode="template"
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="pools">
+        <NativeTabs.Trigger.Label>Pools</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          src={require('@/assets/images/tabIcons/explore.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>

@@ -32,6 +32,7 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env.android
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +42,9 @@ example
 # generated native folders
 /ios
 /android
+
+# nativehelper cmake build artifacts (vendor/ is committed for arm64)
+plugins/nativehelper-lib/build/
+plugins/nativehelper-lib/prebuilt/
+vendor/bare-kit/build/
+vendor/bare-kit/
