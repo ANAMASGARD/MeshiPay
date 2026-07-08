@@ -24,12 +24,12 @@ export function leaveRoom(): void {
   // no-op on web
 }
 
-export function broadcast(_event: TipPoolEvent): void {
+export function broadcast(_event: unknown): void {
   console.warn(WEB_MESSAGE);
 }
 
 export function useP2PRoom() {
-  const [events] = useState<TipPoolEvent[]>([]);
+  const [events] = useState<unknown[]>([]);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export function useP2PRoom() {
     console.warn(WEB_MESSAGE);
   }, []);
 
-  const noopBroadcast = useCallback((_event: TipPoolEvent) => {
+  const noopBroadcast = useCallback((_event: unknown) => {
     console.warn(WEB_MESSAGE);
   }, []);
 

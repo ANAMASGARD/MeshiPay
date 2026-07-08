@@ -17,7 +17,7 @@ export default function IndexScreen() {
   }
 
   if (state.status === 'READY') {
-    return <Redirect href="/home" />;
+    return <Redirect href="/(tabs)/gate" />;
   }
 
   return <OnboardingScreen />;

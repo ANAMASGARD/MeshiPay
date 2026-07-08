@@ -7,6 +7,7 @@ import {
   parseTipPoolEvent,
   type TipPoolEvent,
 } from '@/features/pools/tip-pool-event';
+import { parseTicketEvent } from '@/features/tickets/ticket-events';
 
 type HostMessage =
   | { kind: 'ready' }
@@ -18,7 +19,7 @@ type HostMessage =
 let workletInstance: Worklet | null = null;
 let ipcInstance: Worklet['IPC'] | null = null;
 const subscribers = new Set<(message: HostMessage) => void>();
-const eventSubscribers = new Set<(event: TipPoolEvent) => void>();
+const eventSubscribers = new Set<(event: unknown) => void>();
 const seenEventIds = new Set<string>();
 
 function emit(message: HostMessage) {
@@ -39,7 +40,9 @@ function handleHostData(data: unknown) {
   emit(message);
 
   if (message.kind === 'event') {
-    const event = parseTipPoolEvent(message.event);
+    const tipEvent = parseTipPoolEvent(message.event);
+    const ticketEvent = tipEvent ? null : parseTicketEvent(message.event);
+    const event = tipEvent ?? ticketEvent;
     if (!event || seenEventIds.has(event.eventId)) {
       return;
     }
@@ -100,13 +103,20 @@ export function leaveRoom(): void {
   sendCommand({ cmd: 'leave' });
 }
 
-export function broadcast(event: TipPoolEvent): void {
+export function broadcast(event: unknown): void {
   ensureP2PWorklet();
-  seenEventIds.add(event.eventId);
+  if (
+    typeof event === 'object' &&
+    event !== null &&
+    'eventId' in event &&
+    typeof (event as { eventId: unknown }).eventId === 'string'
+  ) {
+    seenEventIds.add((event as { eventId: string }).eventId);
+  }
   sendCommand({ cmd: 'broadcast', event });
 }
 
-export function subscribeEvents(callback: (event: TipPoolEvent) => void): () => void {
+export function subscribeEvents(callback: (event: unknown) => void): () => void {
   eventSubscribers.add(callback);
   return () => eventSubscribers.delete(callback);
 }
@@ -118,7 +128,7 @@ export function subscribeHost(callback: (message: HostMessage) => void): () => v
 
 export function useP2PRoom() {
   const [peerCount, setPeerCount] = useState(0);
-  const [events, setEvents] = useState<TipPoolEvent[]>([]);
+  const [events, setEvents] = useState<unknown[]>([]);
   const [isActive, setIsActive] = useState(false);
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const mountedRef = useRef(true);
@@ -176,7 +186,7 @@ export function useP2PRoom() {
     setPeerCount(0);
   }, []);
 
-  const broadcastHook = useCallback((event: TipPoolEvent) => {
+  const broadcastHook = useCallback((event: unknown) => {
     broadcast(event);
     setEvents((current) => [...current, event]);
   }, []);

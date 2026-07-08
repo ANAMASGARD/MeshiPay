@@ -27,9 +27,16 @@ export function useWalletManager(): WalletManagerReturn {
     throw new Error(WEB_MESSAGE);
   }, []);
 
+  const lock = useCallback(() => {
+    // no-op on web preview
+  }, []);
+
   return {
     createWallet: unavailable,
     unlock: unavailable,
+    restoreWallet: unavailable,
+    getMnemonic: unavailable,
+    lock,
   };
 }
 

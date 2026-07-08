@@ -54,4 +54,7 @@ export type UseAccountReturn = {
 export type WalletManagerReturn = {
   createWallet: (walletId: string) => Promise<void>;
   unlock: (walletId?: string) => Promise<void>;
+  restoreWallet: (mnemonic: string, walletId: string) => Promise<string>;
+  getMnemonic: (walletId: string) => Promise<string | null>;
+  lock: () => void;
 };

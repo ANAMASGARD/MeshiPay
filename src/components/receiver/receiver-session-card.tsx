@@ -1,0 +1,82 @@
+import { StyleSheet, Text, View } from 'react-native';
+import { QrCodeView } from '@/components/tickets/qr-code-view';
+
+import { TicketPreviewCard } from '@/components/tickets/ticket-preview-card';
+import { MeshipayBrand } from '@/constants/meshipay-brand';
+import type { TicketRecord } from '@/features/tickets/ticket-types';
+
+type ReceiverSessionCardProps = {
+  ticket: TicketRecord;
+  qrPayload: string;
+  peerCount: number;
+  sessionId: string;
+};
+
+export function ReceiverSessionCard({
+  ticket,
+  qrPayload,
+  peerCount,
+  sessionId,
+}: ReceiverSessionCardProps) {
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.shadow} />
+      <View style={styles.card}>
+        <Text style={styles.heading}>SCAN TO PAY</Text>
+        <Text style={styles.peer}>
+          {peerCount > 0 ? `${peerCount} peer connected` : 'Waiting for sender scan...'}
+        </Text>
+        <View style={styles.qrFrame}>
+          <QrCodeView value={qrPayload} size={220} />
+        </View>
+        <TicketPreviewCard ticket={ticket} compact />
+        <Text style={styles.session}>Session {sessionId.slice(0, 12)}...</Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { position: 'relative', marginBottom: 16 },
+  shadow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -5,
+    top: 5,
+    borderRadius: 16,
+    backgroundColor: MeshipayBrand.border,
+  },
+  card: {
+    borderWidth: 3,
+    borderColor: MeshipayBrand.border,
+    borderRadius: 16,
+    backgroundColor: MeshipayBrand.backgroundElevated,
+    padding: 16,
+    alignItems: 'center',
+    gap: 10,
+  },
+  heading: {
+    color: MeshipayBrand.primary,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  peer: {
+    color: MeshipayBrand.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  qrFrame: {
+    borderWidth: 3,
+    borderColor: MeshipayBrand.border,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: MeshipayBrand.cream,
+  },
+  session: {
+    color: MeshipayBrand.muted,
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+});

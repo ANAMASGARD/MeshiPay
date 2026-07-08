@@ -35,13 +35,17 @@ echo "[build-bare-kit] Installing bare-kit build deps..."
 
 cp "$PATCH_EVENTS" "$VENDOR/shared/android/events.c"
 
-# cmake-java's JNI::NativeHelper target is unavailable in this NDK setup.
+# Patch CMake JNI linking when upstream still uses use_java() + JNI::NativeHelper.
 python3 <<'PY'
 from pathlib import Path
 
 cmake = Path("/home/linux/Desktop/meshipay/vendor/bare-kit/shared/CMakeLists.txt")
 text = cmake.read_text()
-old = """  use_java()
+
+if "find_package(JNI REQUIRED)" in text and "${JNI_LIBRARIES}" in text:
+    print("[build-bare-kit] CMake JNI patch already applied — skipping")
+else:
+    old = """  use_java()
 
   target_link_libraries(
     bare_worklet
@@ -49,23 +53,24 @@ old = """  use_java()
       android
       JNI::NativeHelper
   )"""
-new = """  find_package(JNI REQUIRED)
+    new = """  find_package(JNI REQUIRED)
 
   target_link_libraries(
     bare_worklet
     PRIVATE
       android
-      \${JNI_LIBRARIES}
+      ${JNI_LIBRARIES}
   )
 
   target_link_options(
     bare_worklet
     PRIVATE
-      \"LINKER:--allow-shlib-undefined\"
+      "LINKER:--allow-shlib-undefined"
   )"""
-if old not in text:
-    raise SystemExit("shared/CMakeLists.txt Android JNI block changed upstream")
-cmake.write_text(text.replace(old, new))
+    if old not in text:
+        raise SystemExit("shared/CMakeLists.txt Android JNI block changed upstream — manual update needed")
+    cmake.write_text(text.replace(old, new))
+    print("[build-bare-kit] Applied CMake JNI patch")
 PY
 
 BUILD_DIR="$VENDOR/build/android-$ABI"

@@ -1,6 +1,7 @@
 import { Decimal } from 'decimal.js';
 
 import type { TipPoolEvent } from './tip-pool-event';
+import { parseTipPoolEvent } from './tip-pool-event';
 
 export type PoolPhase = 'open' | 'settling' | 'settled';
 
@@ -25,24 +26,28 @@ function sumPledges(pledges: { amount: string }[]): string {
 }
 
 export function reducePoolState(
-  events: TipPoolEvent[],
+  events: unknown[],
   localAddress: string | null,
   peerCount: number,
   pendingTxHash?: string,
 ): PoolViewModel | null {
-  const created = events.find((event) => event.type === 'POOL_CREATED');
+  const tipEvents = events
+    .map((event) => parseTipPoolEvent(event))
+    .filter((event): event is TipPoolEvent => event !== null);
+
+  const created = tipEvents.find((event) => event.type === 'POOL_CREATED');
   if (!created || created.type !== 'POOL_CREATED') {
     return null;
   }
 
-  const pledges = events
+  const pledges = tipEvents
     .filter((event) => event.type === 'TIP_PLEDGED')
     .map((event) => ({
       from: event.from,
       amount: event.amount,
     }));
 
-  const settled = events.find((event) => event.type === 'TIP_SETTLED');
+  const settled = tipEvents.find((event) => event.type === 'TIP_SETTLED');
   const isCreator =
     localAddress !== null &&
     created.creator.toLowerCase() === localAddress.toLowerCase();

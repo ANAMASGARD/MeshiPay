@@ -10,6 +10,9 @@ export const MeshipayBrand = {
   border: '#000000',
   accentGreen: '#2D5A34',
   glass: 'rgba(20, 26, 20, 0.72)',
+  cream: '#F5F0D8',
+  creamPressed: '#E8E2C8',
+  navGlass: 'rgba(90, 96, 90, 0.55)',
 } as const;
 
 export const NeoBrutalShadow = {

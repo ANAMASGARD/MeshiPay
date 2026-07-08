@@ -57,7 +57,7 @@ export default function PoolsScreen() {
 
   async function handleCreatePool() {
     if (!walletReady || !address) {
-      Alert.alert('Wallet required', 'Create and unlock your wallet on the Home tab first.');
+      Alert.alert('Wallet required', 'Create and unlock your wallet on the Gate tab first.');
       return;
     }
 
@@ -162,8 +162,8 @@ export default function PoolsScreen() {
               <ThemedText type="subtitle">Wallet not ready</ThemedText>
               <ThemedText themeColor="textSecondary">
                 {walletLocked
-                  ? 'Unlock your wallet on the Home tab to create or settle pools.'
-                  : 'Create a wallet on the Home tab before using pools.'}
+                  ? 'Unlock your wallet on the Gate tab to create or settle pools.'
+                  : 'Create a wallet on the Gate tab before using pools.'}
               </ThemedText>
               {walletLocked && (
                 <Pressable style={styles.button} onPress={() => unlock()}>

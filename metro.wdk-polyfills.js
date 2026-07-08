@@ -66,6 +66,12 @@ function configureMetroForWDK(config) {
           type: 'sourceFile',
         };
       }
+      if (moduleName === 'react-native-svg') {
+        return {
+          filePath: path.resolve(projectRoot, 'node_modules/react-native-svg/lib/commonjs/index.js'),
+          type: 'sourceFile',
+        };
+      }
       if (existingResolveRequest) {
         return existingResolveRequest(context, moduleName, platform);
       }
