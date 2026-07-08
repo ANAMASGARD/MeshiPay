@@ -6,6 +6,7 @@ import { PitchScreen } from '@/components/layout/pitch-screen';
 import { QrCodeView } from '@/components/tickets/qr-code-view';
 import { TicketBuilderForm } from '@/components/tickets/ticket-builder-form';
 import { TicketPreviewCard } from '@/components/tickets/ticket-preview-card';
+import { MeshipayLoadingOverlay } from '@/components/ui/meshipay-loading-overlay';
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { createTicketFromDraft, createTicketFromDraftWithQr, upsertTicket } from '@/features/tickets/ticket-storage';
@@ -103,6 +104,8 @@ export default function CreateTicketScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <MeshipayLoadingOverlay visible={saving} label="CREATING TICKET" />
     </PitchScreen>
   );
 }

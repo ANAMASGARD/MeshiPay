@@ -2,7 +2,7 @@
 
 Session log for agents and humans. Update after meaningful UI, native, or architecture changes.
 
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-08 (demo APK + swipe tabs + payment hardening)
 
 ---
 
@@ -12,8 +12,9 @@ Session log for agents and humans. Update after meaningful UI, native, or archit
 npm run verify   # lint (expo lint) + typecheck (tsc --noEmit)
 ```
 
-- **Latest run:** passed — no lint or TypeScript errors.
-- **Native rebuild:** required after `expo-image-picker` install → `npm run android:recover`
+- **Latest run:** passed — swipe tabs, pay swipe-lock, SESSION_CREATED re-broadcast.
+- **Release APK:** `android/app/build/outputs/apk/release/app-release.apk` (standalone, no Metro).
+- **Native rebuild:** `npm run android:recover` after plugin / icon / native changes.
 - **Unit/integration tests:** none configured yet.
 
 ---
@@ -23,7 +24,42 @@ npm run verify   # lint (expo lint) + typecheck (tsc --noEmit)
 | Commit | Summary |
 |--------|---------|
 | `70c81e8` | Ticket payment workflow — tab nav, P2P session QR, TicketsP2PProvider |
-| *(this branch)* | Demo UI polish v2 — hide testnet/role chrome, session-derived P2P, wallet connect, ticket images |
+| `0d60740` | Demo UI polish — session-derived P2P, wallet connect |
+| *(HEAD)* | Loading dots, slim QR, swipe tabs, payment re-broadcast, README/APK docs |
+
+---
+
+## Completed work (2026-07-08 — loading dots + performance)
+
+### Yellow 3-dot loaders
+
+- **`MeshipayDotsLoader`** — Reanimated staggered bounce, `MeshipayBrand.primary`.
+- **`MeshipayInlineLoader`** — fixed-height inline placeholder.
+- **`MeshipayLoadingOverlay`** — full-screen dim + label for long ops.
+- Wired across Gate, Pay, Tickets, wallet connect, create-ticket, payment QR modal, WDK init.
+- `TicketsP2PProvider.busyMessage` during session start/join.
+
+### QR performance
+
+- **`QrCodeView`** — `react-native-svg` + run-length encoded rects (replaces 625 View cells).
+- **Slim payment QR** — bootstrap fields only in QR; display metadata via extended `SESSION_CREATED` P2P event.
+- **SESSION_CREATED re-broadcast** — receiver re-sends session metadata when sender `HELLO` / `PAYMENT_REQUESTED` arrives (P2P has no replay).
+- **UPI-style confirm** — amount + payee from hash-verified QR immediately; pay enabled once peer connected (details hydrate async).
+- **Legacy full QR** still parses/verifies for backward compatibility.
+- **`TicketCard`** list rows — static QR icon stub (no matrix encode on tab open).
+- Cover thumbnails: `expo-image` `cachePolicy="memory-disk"`.
+- **Swipe tabs** — `@react-navigation/material-top-tabs` + existing `react-native-pager-view`; swipe Gate ↔ Pay ↔ Tickets ↔ Settings; bottom `GlassTabBar` syncs on swipe.
+- Memoized `TicketOfferList`, `TicketCard`, `OnboardingBackground`; FlatList for gate ticket rows; lazy tab screens.
+
+### Pay flow hardening (post-review)
+
+- **`SESSION_CREATED` re-broadcast** when receiver sees sender `HELLO` / `PAYMENT_REQUESTED` (P2P no-replay fix).
+- **`usePaySwipeLock`** — disables Pay tab swipe during scan/confirm/pay; camera unmounts when tab blurred.
+- **`activeSessionRef`** updated synchronously on join/begin session.
+
+### Design spec
+
+- `docs/superpowers/specs/2026-07-08-loading-dots-perf-design.md`
 
 ---
 
@@ -86,13 +122,14 @@ Demo-ready UX: no visible Sepolia/WDK/role picker on main tabs. Backend unchange
 
 | Area | Path |
 |------|------|
+| Loading UI | `src/components/ui/meshipay-dots-loader.tsx`, `meshipay-inline-loader.tsx`, `meshipay-loading-overlay.tsx` |
 | P2P + ticket store | `src/features/tickets/tickets-p2p-context.tsx` |
 | Session / fulfill | `src/features/tickets/payment-session.ts` |
 | Event reducer | `src/features/tickets/ticket-event-handler.ts` |
 | Pay flow hook | `src/hooks/use-payment-flow.ts` |
 | Wallet connect | `src/components/wallet/wallet-connect-button.tsx` |
 | Receive payment QR | `src/components/receiver/payment-qr-modal.tsx` |
-| QR payloads | `src/features/tickets/qr-payload.ts` |
+| QR render + payload | `src/components/tickets/qr-code-view.tsx`, `src/features/tickets/qr-payload.ts` |
 | Ticket image pick | `src/features/tickets/ticket-image.ts` |
 
 ---
@@ -100,7 +137,7 @@ Demo-ready UX: no visible Sepolia/WDK/role picker on main tabs. Backend unchange
 ## Architecture invariants
 
 - Money = WDK on-chain; tickets = Hyperswarm P2P messages; no Meshipay backend.
-- Payment QR = `meshipay-ticket-session` (15 min TTL, scanned on Pay tab).
+- Payment QR = `meshipay-ticket-session` slim bootstrap (15 min TTL); display fields from P2P `SESSION_CREATED`.
 - Offer QR = `meshipay-ticket-offer` (display at creation, not scannable for pay).
 - Shared state: `TicketsP2PProvider` in `src/app/_layout.tsx`.
 
@@ -112,7 +149,8 @@ Demo-ready UX: no visible Sepolia/WDK/role picker on main tabs. Backend unchange
 |------|---------|
 | Verify codebase | `npm run verify` |
 | Metro dev (Terminal 1) | `source scripts/android-env.sh && export REACT_NATIVE_PACKAGER_HOSTNAME=localhost && adb reverse tcp:8081 tcp:8081 && npm start` |
-| After image-picker / native plugin | `npm run android:recover` |
-| Fresh Android install | `npm run android:device` |
+| USB dev install | `npm run android:device` |
+| After native/plugin change | `npm run android:recover` |
+| Standalone release APK | `npm run generate:wdk && npm run pack:p2p && npm run build:bare-kit && npx expo prebuild --clean --platform android && cd android && ./gradlew assembleRelease` → `android/app/build/outputs/apk/release/app-release.apk` |
 
 **Two-device demo:** Gate → Connect wallet → Create ticket → Receive Payment QR. Pay → Connect wallet → Scan → pay → ticket in Tickets; attendee on Gate.

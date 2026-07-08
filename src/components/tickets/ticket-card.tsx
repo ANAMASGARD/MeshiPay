@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { QrCodeView } from '@/components/tickets/qr-code-view';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { formatMatchWindow, shortAddress } from '@/features/tickets/payment-helpers';
@@ -30,9 +30,8 @@ function statusBadge(status: TicketRecord['status']): { label: string; color: st
   }
 }
 
-export function TicketCard({ ticket, onPress }: TicketCardProps) {
+export const TicketCard = memo(function TicketCard({ ticket, onPress }: TicketCardProps) {
   const badge = statusBadge(ticket.status);
-  const qrSeed = ticket.ticketQrPayload ?? ticket.qrPayload ?? ticket.ticketId;
 
   const body = (
     <View style={styles.wrap}>
@@ -78,7 +77,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
         </View>
 
         <View style={styles.qrSlot}>
-          <QrCodeView value={qrSeed} size={88} />
+          <MaterialCommunityIcons name="qrcode" size={64} color={MeshipayBrand.border} />
         </View>
       </View>
     </View>
@@ -93,7 +92,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
       {body}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

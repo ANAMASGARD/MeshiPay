@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ReceiverSessionCard } from '@/components/receiver/receiver-session-card';
+import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
+import { MeshipayLoadingOverlay } from '@/components/ui/meshipay-loading-overlay';
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { isQrExpired, parseQrPayload } from '@/features/tickets/qr-payload';
@@ -24,6 +26,7 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [activeTicket, setActiveTicket] = useState(ticket);
   const [starting, setStarting] = useState(false);
+  const [qrReady, setQrReady] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   const walletReady = state.status === 'READY' && !!address;
@@ -33,9 +36,11 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
     if (ticket.qrPayload && ticket.sessionId) {
       setQrString(ticket.qrPayload);
       setSessionId(ticket.sessionId);
+      setQrReady(true);
     } else {
       setQrString(null);
       setSessionId(null);
+      setQrReady(false);
     }
   }, [ticket]);
 
@@ -46,6 +51,19 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [visible]);
+
+  useEffect(() => {
+    if (!qrString) {
+      setQrReady(false);
+      return;
+    }
+    setQrReady(false);
+    const frame = requestAnimationFrame(() => {
+      parseQrPayload(qrString);
+      setQrReady(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [qrString]);
 
   const parsedQr = qrString ? parseQrPayload(qrString) : null;
   const expired = parsedQr ? isQrExpired(parsedQr, now) : false;
@@ -61,6 +79,7 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
     }
 
     setStarting(true);
+    setQrReady(false);
     try {
       const started = await p2p.beginPaymentSession(
         activeTicket,
@@ -83,6 +102,8 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
   const remainingMs = parsedQr ? Math.max(0, parsedQr.expiresAt - now) : 0;
   const remainingMin = Math.floor(remainingMs / 60000);
   const remainingSec = Math.floor((remainingMs % 60000) / 1000);
+
+  const showOverlay = starting || p2p.busyMessage === 'GENERATING QR';
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -112,12 +133,18 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
             <Text style={styles.timer}>
               Expires in {remainingMin}:{remainingSec.toString().padStart(2, '0')}
             </Text>
-            <ReceiverSessionCard
-              ticket={activeTicket}
-              qrPayload={qrString}
-              peerCount={p2p.peerCount}
-              sessionId={sessionId ?? ''}
-            />
+            {qrReady ? (
+              <ReceiverSessionCard
+                ticket={activeTicket}
+                qrPayload={qrString}
+                peerCount={p2p.peerCount}
+                sessionId={sessionId ?? ''}
+              />
+            ) : (
+              <View style={styles.qrLoaderWrap}>
+                <MeshipayInlineLoader label="GENERATING QR" height={280} />
+              </View>
+            )}
             <NeoBrutalButton
               label="REGENERATE QR"
               variant="secondary"
@@ -127,6 +154,8 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
           </>
         )}
       </View>
+
+      <MeshipayLoadingOverlay visible={showOverlay} label="GENERATING QR" />
     </Modal>
   );
 }
@@ -193,5 +222,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  qrLoaderWrap: {
+    borderWidth: 3,
+    borderColor: MeshipayBrand.border,
+    borderRadius: 16,
+    backgroundColor: MeshipayBrand.backgroundElevated,
+    marginBottom: 8,
   },
 });

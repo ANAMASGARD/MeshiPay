@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { createSepoliaUsdtAsset, usdtToAtomic } from '@/features/tickets/payment-helpers';
-import { parseTicketOfferQr } from '@/features/tickets/qr-payload';
-import type { QrPayload } from '@/features/tickets/qr-payload';
+import {
+  isQrPayloadHydrated,
+  mergeQrPayloadDisplay,
+  parseTicketOfferQr,
+  type QrPayload,
+} from '@/features/tickets/qr-payload';
 import { markSessionPaid } from '@/features/tickets/ticket-storage';
 import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
 import { useAccount } from '@/features/wdk/wdk-hooks';
@@ -17,8 +21,22 @@ export function usePaymentFlow(walletReady: boolean) {
   const [step, setStep] = useState<PayStep>('idle');
   const [payload, setPayload] = useState<QrPayload | null>(null);
   const [paying, setPaying] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+
+  const displayPayload = useMemo(() => {
+    if (!payload) {
+      return null;
+    }
+    if (isQrPayloadHydrated(payload)) {
+      return payload;
+    }
+    if (p2p.sessionDisplay) {
+      return mergeQrPayloadDisplay(payload, p2p.sessionDisplay);
+    }
+    return payload;
+  }, [payload, p2p.sessionDisplay]);
 
   useEffect(() => {
     if (!pendingSessionId) {
@@ -55,15 +73,20 @@ export function usePaymentFlow(walletReady: boolean) {
         return;
       }
 
-      const result = await p2p.joinPaymentSessionAsSender(raw, address);
-      if (!result.ok) {
-        Alert.alert('Invalid QR', result.reason);
-        setStep('idle');
-        return;
-      }
+      setJoining(true);
+      try {
+        const result = await p2p.joinPaymentSessionAsSender(raw, address);
+        if (!result.ok) {
+          Alert.alert('Invalid QR', result.reason);
+          setStep('idle');
+          return;
+        }
 
-      setPayload(result.payload);
-      setStep('confirm');
+        setPayload(result.payload);
+        setStep('confirm');
+      } finally {
+        setJoining(false);
+      }
     },
     [address, p2p],
   );
@@ -124,8 +147,11 @@ export function usePaymentFlow(walletReady: boolean) {
   return {
     step,
     setStep,
-    payload,
+    payload: displayPayload,
+    payloadHydrated: displayPayload ? isQrPayloadHydrated(displayPayload) : false,
     paying,
+    joining,
+    busyMessage: p2p.busyMessage,
     lastTxHash,
     peerCount: p2p.peerCount,
     handleScanResult,

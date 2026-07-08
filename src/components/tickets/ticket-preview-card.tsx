@@ -19,7 +19,12 @@ export function TicketPreviewCard({ ticket, qrValue, compact, onQrPress }: Ticke
       <View style={styles.shadow} />
       <View style={[styles.card, compact ? styles.cardCompact : null]}>
         {ticket.imageUri ? (
-          <Image source={{ uri: ticket.imageUri }} style={styles.cover} contentFit="cover" />
+          <Image
+            source={{ uri: ticket.imageUri }}
+            style={styles.cover}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : null}
         <View style={styles.header}>
           <Text style={styles.event}>{ticket.eventName}</Text>

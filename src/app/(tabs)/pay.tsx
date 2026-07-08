@@ -1,15 +1,22 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { PaymentConfirmCard } from '@/components/pay/payment-confirm-card';
 import { QrScanner } from '@/components/pay/qr-scanner';
+import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
+import { MeshipayLoadingOverlay } from '@/components/ui/meshipay-loading-overlay';
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { useAccount, useWdkApp } from '@/features/wdk/wdk-hooks';
+import { usePaySwipeLock } from '@/hooks/use-pay-swipe-lock';
 import { usePaymentFlow } from '@/hooks/use-payment-flow';
 
 export default function PayScreen() {
+  const isFocused = useIsFocused();
+  const { setLocked } = usePaySwipeLock();
   const { state } = useWdkApp();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
   const walletReady = state.status === 'READY' && !!address;
@@ -18,7 +25,10 @@ export default function PayScreen() {
     step,
     setStep,
     payload,
+    payloadHydrated,
     paying,
+    joining,
+    busyMessage,
     lastTxHash,
     peerCount,
     handleScanResult,
@@ -27,7 +37,17 @@ export default function PayScreen() {
     cancelConfirm,
   } = usePaymentFlow(walletReady);
 
-  if (step === 'scanning') {
+  useEffect(() => {
+    setLocked(step !== 'idle');
+  }, [setLocked, step]);
+
+  useEffect(() => {
+    if (!isFocused && step === 'scanning') {
+      setStep('idle');
+    }
+  }, [isFocused, setStep, step]);
+
+  if (step === 'scanning' && isFocused) {
     return (
       <View style={styles.scannerRoot}>
         <QrScanner
@@ -36,6 +56,7 @@ export default function PayScreen() {
           }}
           onClose={() => setStep('idle')}
         />
+        <MeshipayLoadingOverlay visible={joining} label="JOINING SESSION" />
       </View>
     );
   }
@@ -49,6 +70,7 @@ export default function PayScreen() {
       {step === 'confirm' && payload ? (
         <PaymentConfirmCard
           payload={payload}
+          payloadHydrated={payloadHydrated}
           peerCount={peerCount}
           loading={paying}
           onPay={handlePay}
@@ -57,6 +79,7 @@ export default function PayScreen() {
       ) : step === 'pending_transfer' ? (
         <View style={styles.pendingCard}>
           <Text style={styles.pendingTitle}>TICKET TRANSFER PENDING</Text>
+          <MeshipayInlineLoader label="WAITING FOR TICKET" height={80} />
           <Text style={styles.pendingCopy}>
             Payment confirmed. Your ticket will appear in Tickets when the gatekeeper transfers it.
           </Text>
@@ -83,6 +106,8 @@ export default function PayScreen() {
           </View>
         </Pressable>
       )}
+
+      <MeshipayLoadingOverlay visible={busyMessage !== null} label={busyMessage ?? ''} />
     </PitchScreen>
   );
 }

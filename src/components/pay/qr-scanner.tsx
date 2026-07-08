@@ -2,6 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 
 type QrScannerProps = {
@@ -27,7 +28,7 @@ export function QrScanner({ onScan, onClose }: QrScannerProps) {
   if (!permission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.copy}>Checking camera permission...</Text>
+        <MeshipayInlineLoader label="CHECKING CAMERA" height={120} />
       </View>
     );
   }

@@ -6,6 +6,7 @@ import { PitchScreen } from '@/components/layout/pitch-screen';
 import { PaymentQrModal } from '@/components/receiver/payment-qr-modal';
 import { QrCodeView } from '@/components/tickets/qr-code-view';
 import { TicketPreviewCard } from '@/components/tickets/ticket-preview-card';
+import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { getTicketById } from '@/features/tickets/ticket-storage';
@@ -70,7 +71,7 @@ export default function TicketPreviewScreen() {
   if (!ticket) {
     return (
       <PitchScreen>
-        <Text style={styles.loading}>Loading ticket...</Text>
+        <MeshipayInlineLoader label="LOADING TICKET" height={200} />
       </PitchScreen>
     );
   }
@@ -129,11 +130,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
     marginBottom: 12,
-  },
-  loading: {
-    color: MeshipayBrand.muted,
-    textAlign: 'center',
-    marginTop: 40,
   },
   priceRow: { marginVertical: 12, gap: 6 },
   priceLabel: {

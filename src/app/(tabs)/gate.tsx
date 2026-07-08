@@ -6,6 +6,7 @@ import { AttendeeRow } from '@/components/receiver/attendee-row';
 import { PaymentQrModal } from '@/components/receiver/payment-qr-modal';
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { TicketOfferList } from '@/components/tickets/ticket-offer-list';
+import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
 import { NeoBrutalSectionButton } from '@/components/ui/neo-brutal-section-button';
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -35,13 +36,15 @@ export default function GateScreen() {
       />
 
       <Text style={styles.sectionTitle}>YOUR TICKETS</Text>
-      {!ticketsLoading ? (
+      {ticketsLoading ? (
+        <MeshipayInlineLoader label="LOADING TICKETS" height={100} />
+      ) : (
         <TicketOfferList
           tickets={tickets}
           onView={(ticketId) => router.push(`/ticket-preview/${ticketId}`)}
           onReceivePayment={(ticket) => setPaymentTicket(ticket)}
         />
-      ) : null}
+      )}
 
       {attendees.length > 0 ? (
         <>

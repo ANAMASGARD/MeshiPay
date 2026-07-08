@@ -16,6 +16,13 @@ export const ticketEventSchema = z.discriminatedUnion('type', [
     ticketId: z.string().min(1),
     receiverAddress: z.string().min(1),
     eventName: z.string().min(1),
+    homeTeam: z.string().min(1),
+    awayTeam: z.string().min(1),
+    venue: z.string().min(1),
+    gate: z.string().min(1),
+    seatLabel: z.string().min(1),
+    startAt: z.string().min(1),
+    endAt: z.string().min(1),
     priceUsdt: z.string().min(1),
   }),
   baseEvent.extend({

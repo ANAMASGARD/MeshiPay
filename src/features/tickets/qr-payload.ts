@@ -1,15 +1,26 @@
 import * as Crypto from 'expo-crypto';
 import { z } from 'zod';
 
+import type { TicketEvent } from '@/features/tickets/ticket-events';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
 
-export const qrPayloadSchema = z.object({
+const currencyLiteral = z.literal('USDT_SEPOLIA');
+
+/** Minimal bootstrap fields encoded in payment QR (slim v1). */
+export const qrPayloadSlimSchema = z.object({
   v: z.literal(1),
   kind: z.literal('meshipay-ticket-session'),
   sessionId: z.string().min(1),
   topic: z.string().min(1),
   receiverAddress: z.string().min(1),
   ticketId: z.string().min(1),
+  priceUsdt: z.string().min(1),
+  expiresAt: z.number(),
+  payloadHash: z.string().min(1),
+});
+
+/** Display fields — in QR for legacy payloads; hydrated from P2P for slim QRs. */
+export const qrPayloadDisplaySchema = z.object({
   eventName: z.string().min(1),
   homeTeam: z.string().min(1),
   awayTeam: z.string().min(1),
@@ -18,11 +29,11 @@ export const qrPayloadSchema = z.object({
   seatLabel: z.string().min(1),
   startAt: z.string().min(1),
   endAt: z.string().min(1),
-  priceUsdt: z.string().min(1),
-  currency: z.literal('USDT_SEPOLIA'),
-  expiresAt: z.number(),
-  payloadHash: z.string().min(1),
+  currency: currencyLiteral,
 });
+
+/** Legacy full QR payload (backward compatible). */
+export const qrPayloadFullSchema = qrPayloadSlimSchema.merge(qrPayloadDisplaySchema);
 
 export const ticketOfferQrSchema = z.object({
   v: z.literal(1),
@@ -39,12 +50,18 @@ export const ticketOfferQrSchema = z.object({
   endAt: z.string().min(1),
   priceUsdt: z.string().min(1),
   checkInCode: z.string().min(1),
-  currency: z.literal('USDT_SEPOLIA'),
+  currency: currencyLiteral,
   payloadHash: z.string().min(1),
 });
 
-export type QrPayload = z.infer<typeof qrPayloadSchema>;
+export type QrPayloadSlim = z.infer<typeof qrPayloadSlimSchema>;
+export type QrPayloadDisplay = z.infer<typeof qrPayloadDisplaySchema>;
+export type QrPayloadFull = z.infer<typeof qrPayloadFullSchema>;
+export type QrPayload = QrPayloadSlim & Partial<QrPayloadDisplay>;
 export type TicketOfferQr = z.infer<typeof ticketOfferQrSchema>;
+
+/** @deprecated Use qrPayloadFullSchema — kept for existing imports. */
+export const qrPayloadSchema = qrPayloadFullSchema;
 
 function makeTopic(sessionId: string): string {
   return `meshipay-session-${sessionId}`;
@@ -55,12 +72,33 @@ async function hashCanonical(payload: Record<string, unknown>): Promise<string> 
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, canonical);
 }
 
+export function isQrPayloadHydrated(payload: QrPayload): payload is QrPayloadFull {
+  return (
+    typeof payload.eventName === 'string' &&
+    typeof payload.homeTeam === 'string' &&
+    typeof payload.awayTeam === 'string' &&
+    typeof payload.venue === 'string' &&
+    typeof payload.gate === 'string' &&
+    typeof payload.seatLabel === 'string' &&
+    typeof payload.startAt === 'string' &&
+    typeof payload.endAt === 'string' &&
+    payload.currency === 'USDT_SEPOLIA'
+  );
+}
+
+export function mergeQrPayloadDisplay(
+  payload: QrPayload,
+  display: QrPayloadDisplay,
+): QrPayloadFull {
+  return { ...payload, ...display };
+}
+
 export async function buildQrPayload(params: {
   sessionId: string;
   ticket: TicketRecord;
   receiverAddress: string;
   expiresAt: number;
-}): Promise<QrPayload> {
+}): Promise<QrPayloadSlim> {
   const topic = makeTopic(params.sessionId);
   const base = {
     v: 1 as const,
@@ -69,16 +107,7 @@ export async function buildQrPayload(params: {
     topic,
     receiverAddress: params.receiverAddress,
     ticketId: params.ticket.ticketId,
-    eventName: params.ticket.eventName,
-    homeTeam: params.ticket.homeTeam,
-    awayTeam: params.ticket.awayTeam,
-    venue: params.ticket.venue,
-    gate: params.ticket.gate,
-    seatLabel: params.ticket.seatLabel,
-    startAt: params.ticket.startAt,
-    endAt: params.ticket.endAt,
     priceUsdt: params.ticket.priceUsdt,
-    currency: 'USDT_SEPOLIA' as const,
     expiresAt: params.expiresAt,
   };
   const payloadHash = await hashCanonical(base);
@@ -120,11 +149,18 @@ export function parseQrPayload(raw: string): QrPayload | null {
     ) {
       return null;
     }
-    const result = qrPayloadSchema.safeParse(parsed);
-    if (!result.success) {
-      return null;
+
+    const full = qrPayloadFullSchema.safeParse(parsed);
+    if (full.success) {
+      return full.data;
     }
-    return result.data;
+
+    const slim = qrPayloadSlimSchema.safeParse(parsed);
+    if (slim.success) {
+      return slim.data;
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -145,8 +181,28 @@ export function parseTicketOfferQr(raw: string): TicketOfferQr | null {
 
 export async function verifyQrPayload(payload: QrPayload): Promise<boolean> {
   const { payloadHash, ...rest } = payload;
-  const expected = await hashCanonical(rest);
-  return expected === payloadHash;
+
+  const slimRest = {
+    v: rest.v,
+    kind: rest.kind,
+    sessionId: rest.sessionId,
+    topic: rest.topic,
+    receiverAddress: rest.receiverAddress,
+    ticketId: rest.ticketId,
+    priceUsdt: rest.priceUsdt,
+    expiresAt: rest.expiresAt,
+  };
+  const slimExpected = await hashCanonical(slimRest);
+  if (slimExpected === payloadHash) {
+    return true;
+  }
+
+  if (isQrPayloadHydrated(payload)) {
+    const fullExpected = await hashCanonical(rest);
+    return fullExpected === payloadHash;
+  }
+
+  return false;
 }
 
 export function isQrExpired(payload: QrPayload, now = Date.now()): boolean {
@@ -163,4 +219,20 @@ export function createReceiptId(): string {
 
 export function createCheckInCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+export function displayFromSessionCreated(
+  event: Extract<TicketEvent, { type: 'SESSION_CREATED' }>,
+): QrPayloadDisplay {
+  return {
+    eventName: event.eventName,
+    homeTeam: event.homeTeam,
+    awayTeam: event.awayTeam,
+    venue: event.venue,
+    gate: event.gate,
+    seatLabel: event.seatLabel,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    currency: 'USDT_SEPOLIA',
+  };
 }

@@ -10,14 +10,23 @@ import {
 } from 'react';
 
 import { reduceTicketEvent } from '@/features/tickets/ticket-event-handler';
-import { startPaymentSession, validateAndJoinSession } from '@/features/tickets/payment-session';
+import {
+  sessionCreatedEvent,
+  shouldRebroadcastSessionToSender,
+  startPaymentSession,
+  validateAndJoinSession,
+} from '@/features/tickets/payment-session';
 import {
   createTicketEventId,
   parseTicketEvent,
   type TicketEvent,
   type TicketEventInput,
 } from '@/features/tickets/ticket-events';
-import type { QrPayload } from '@/features/tickets/qr-payload';
+import {
+  displayFromSessionCreated,
+  type QrPayload,
+  type QrPayloadDisplay,
+} from '@/features/tickets/qr-payload';
 import {
   addAttendee,
   addReceivedTicket,
@@ -32,6 +41,8 @@ type TicketsP2PContextValue = {
   tickets: TicketRecord[];
   attendees: AttendeeRecord[];
   loading: boolean;
+  busyMessage: string | null;
+  sessionDisplay: QrPayloadDisplay | null;
   refresh: () => Promise<void>;
   peerCount: number;
   isActive: boolean;
@@ -59,10 +70,13 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [attendees, setAttendees] = useState<AttendeeRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
+  const [sessionDisplay, setSessionDisplay] = useState<QrPayloadDisplay | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
 
   const lastEventIndexRef = useRef(0);
   const processedPaymentsRef = useRef(new Set<string>());
+  const rebroadcastKeysRef = useRef(new Set<string>());
   const ticketsRef = useRef<TicketRecord[]>([]);
   const activeSessionRef = useRef<ActiveSession | null>(null);
 
@@ -100,62 +114,128 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
     [p2p],
   );
 
-  const clearActiveSession = useCallback(() => {
-    setActiveSession(null);
+  const applyActiveSession = useCallback((session: ActiveSession | null) => {
+    activeSessionRef.current = session;
+    setActiveSession(session);
   }, []);
+
+  const clearActiveSession = useCallback(() => {
+    applyActiveSession(null);
+    setSessionDisplay(null);
+    rebroadcastKeysRef.current.clear();
+  }, [applyActiveSession]);
 
   const beginPaymentSession = useCallback(
     async (ticket: TicketRecord, priceUsdt: string, receiverAddress: string) => {
-      const started = await startPaymentSession({ ticket, priceUsdt, receiverAddress });
-      setTickets((current) => {
-        const index = current.findIndex((item) => item.ticketId === started.ticket.ticketId);
-        if (index < 0) {
-          return [started.ticket, ...current];
-        }
-        const next = [...current];
-        next[index] = started.ticket;
-        return next;
-      });
-      setActiveSession({ sessionId: started.payload.sessionId, role: 'receiver' });
-      p2p.joinRoom(started.payload.topic);
-      started.bootstrapEvents.forEach((partial) => broadcastTicketEvent(partial));
-      return { ticket: started.ticket, qrString: started.qrString };
+      setBusyMessage('GENERATING QR');
+      try {
+        const started = await startPaymentSession({ ticket, priceUsdt, receiverAddress });
+        rebroadcastKeysRef.current.clear();
+        setTickets((current) => {
+          const index = current.findIndex((item) => item.ticketId === started.ticket.ticketId);
+          if (index < 0) {
+            return [started.ticket, ...current];
+          }
+          const next = [...current];
+          next[index] = started.ticket;
+          return next;
+        });
+        const receiverSession: ActiveSession = {
+          sessionId: started.payload.sessionId,
+          role: 'receiver',
+        };
+        applyActiveSession(receiverSession);
+        p2p.joinRoom(started.payload.topic);
+        started.bootstrapEvents.forEach((partial) => broadcastTicketEvent(partial));
+        return { ticket: started.ticket, qrString: started.qrString };
+      } finally {
+        setBusyMessage(null);
+      }
     },
-    [broadcastTicketEvent, p2p],
+    [applyActiveSession, broadcastTicketEvent, p2p],
   );
 
   const joinPaymentSessionAsSender = useCallback(
     async (raw: string, senderAddress: string) => {
-      const result = await validateAndJoinSession(raw);
-      if (!result.ok) {
+      setBusyMessage('JOINING SESSION');
+      try {
+        const result = await validateAndJoinSession(raw);
+        if (!result.ok) {
+          return result;
+        }
+
+        const senderSession: ActiveSession = {
+          sessionId: result.payload.sessionId,
+          role: 'sender',
+          receiverAddress: result.payload.receiverAddress,
+        };
+        applyActiveSession(senderSession);
+        setSessionDisplay(null);
+        p2p.joinRoom(result.payload.topic);
+        broadcastTicketEvent({
+          type: 'HELLO',
+          sessionId: result.payload.sessionId,
+          role: 'sender',
+          walletAddress: senderAddress,
+          appVersion: '1.0.0',
+        });
+        broadcastTicketEvent({
+          type: 'PAYMENT_REQUESTED',
+          sessionId: result.payload.sessionId,
+          senderAddress,
+          amountUsdt: result.payload.priceUsdt,
+        });
+
         return result;
+      } finally {
+        setBusyMessage(null);
       }
-
-      setActiveSession({ sessionId: result.payload.sessionId, role: 'sender' });
-      p2p.joinRoom(result.payload.topic);
-      broadcastTicketEvent({
-        type: 'HELLO',
-        sessionId: result.payload.sessionId,
-        role: 'sender',
-        walletAddress: senderAddress,
-        appVersion: '1.0.0',
-      });
-      broadcastTicketEvent({
-        type: 'PAYMENT_REQUESTED',
-        sessionId: result.payload.sessionId,
-        senderAddress,
-        amountUsdt: result.payload.priceUsdt,
-      });
-
-      return result;
     },
-    [broadcastTicketEvent, p2p],
+    [applyActiveSession, broadcastTicketEvent, p2p],
   );
 
   const leaveRoom = useCallback(() => {
     p2p.leaveRoom();
-    setActiveSession(null);
-  }, [p2p]);
+    applyActiveSession(null);
+    setSessionDisplay(null);
+    rebroadcastKeysRef.current.clear();
+  }, [applyActiveSession, p2p]);
+
+  const rebroadcastSessionToSender = useCallback(
+    (event: TicketEvent) => {
+      const session = activeSessionRef.current;
+      if (session?.role !== 'receiver' || session.sessionId !== event.sessionId) {
+        return;
+      }
+
+      const rebroadcastKey =
+        event.type === 'HELLO'
+          ? `${event.sessionId}:hello:${event.walletAddress}`
+          : `${event.sessionId}:payreq:${(event as Extract<TicketEvent, { type: 'PAYMENT_REQUESTED' }>).senderAddress}`;
+
+      if (rebroadcastKeysRef.current.has(rebroadcastKey)) {
+        return;
+      }
+      rebroadcastKeysRef.current.add(rebroadcastKey);
+
+      const ticket = ticketsRef.current.find(
+        (item) => item.sessionId === event.sessionId && item.kind === 'issued',
+      );
+      if (!ticket?.topic) {
+        return;
+      }
+
+      broadcastTicketEvent(
+        sessionCreatedEvent({
+          sessionId: event.sessionId,
+          topic: ticket.topic,
+          ticket,
+          receiverAddress: ticket.receiverAddress,
+        }),
+      );
+    },
+    [broadcastTicketEvent],
+  );
 
   useEffect(() => {
     const newEvents = p2p.events.slice(lastEventIndexRef.current);
@@ -168,6 +248,21 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
       const event = parseTicketEvent(raw);
       if (!event) {
         return;
+      }
+
+      if (shouldRebroadcastSessionToSender(event)) {
+        rebroadcastSessionToSender(event);
+      }
+
+      if (event.type === 'SESSION_CREATED') {
+        const session = activeSessionRef.current;
+        if (
+          session?.role === 'sender' &&
+          session.sessionId === event.sessionId &&
+          session.receiverAddress === event.receiverAddress
+        ) {
+          setSessionDisplay(displayFromSessionCreated(event));
+        }
       }
 
       const effect = reduceTicketEvent(
@@ -202,13 +297,15 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
           .catch(() => undefined);
       }
     });
-  }, [broadcastTicketEvent, p2p.events]);
+  }, [broadcastTicketEvent, p2p.events, rebroadcastSessionToSender]);
 
   const value = useMemo<TicketsP2PContextValue>(
     () => ({
       tickets,
       attendees,
       loading,
+      busyMessage,
+      sessionDisplay,
       refresh,
       peerCount: p2p.peerCount,
       isActive: p2p.isActive,
@@ -226,6 +323,7 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
       attendees,
       beginPaymentSession,
       broadcastTicketEvent,
+      busyMessage,
       clearActiveSession,
       joinPaymentSessionAsSender,
       leaveRoom,
@@ -235,6 +333,7 @@ export function TicketsP2PProvider({ children }: { children: ReactNode }) {
       p2p.joinRoom,
       p2p.peerCount,
       refresh,
+      sessionDisplay,
       tickets,
     ],
   );

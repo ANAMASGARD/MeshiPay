@@ -1,6 +1,8 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { MeshipayDotsLoader } from '@/components/ui/meshipay-dots-loader';
+import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { wdkConfigs } from '@/config/wdk';
 
 type WdkProviderComponent = ComponentType<{
@@ -33,8 +35,8 @@ export function MeshipayWdkProvider({ children }: { children: ReactNode }) {
 
   if (!WdkAppProvider || bundle == null) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" />
+      <View style={styles.loading}>
+        <MeshipayDotsLoader size="lg" label="LOADING WALLET" />
       </View>
     );
   }
@@ -45,3 +47,12 @@ export function MeshipayWdkProvider({ children }: { children: ReactNode }) {
     </WdkAppProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: MeshipayBrand.background,
+  },
+});

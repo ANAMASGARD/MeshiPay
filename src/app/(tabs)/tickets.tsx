@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { TicketCard } from '@/components/tickets/ticket-card';
+import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { shortAddress } from '@/features/tickets/payment-helpers';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
@@ -68,9 +69,7 @@ export default function TicketsScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={MeshipayBrand.primary} />
-        </View>
+        <MeshipayInlineLoader label="LOADING TICKETS" height={120} />
       ) : filtered.length === 0 ? (
         <Text style={styles.empty}>
           No {activeTab === 'received' ? 'received' : 'issued'} tickets yet.
@@ -152,10 +151,6 @@ const styles = StyleSheet.create({
   },
   toggleLabelActive: {
     color: MeshipayBrand.border,
-  },
-  loading: {
-    paddingVertical: 40,
-    alignItems: 'center',
   },
   empty: {
     color: MeshipayBrand.muted,

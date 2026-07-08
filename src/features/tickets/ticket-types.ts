@@ -80,4 +80,6 @@ export type SessionRole = 'receiver' | 'sender';
 export type ActiveSession = {
   sessionId: string;
   role: SessionRole;
+  /** Hash-verified receiver address from payment QR (sender role only). */
+  receiverAddress?: string;
 };

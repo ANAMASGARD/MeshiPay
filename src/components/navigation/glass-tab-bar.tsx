@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 
@@ -28,7 +28,7 @@ function routeToTab(routeName: string): TabKey | null {
  * Glass-style tab bar using translucent Views only.
  * Avoids expo-blur so GET STARTED works without a native rebuild.
  */
-export function GlassTabBar({ state, navigation }: BottomTabBarProps) {
+export function GlassTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
 
   return (

@@ -1,5 +1,6 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { MeshipayDotsLoader } from '@/components/ui/meshipay-dots-loader';
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { formatMatchWindow, shortAddress } from '@/features/tickets/payment-helpers';
 import type { QrPayload } from '@/features/tickets/qr-payload';
@@ -7,6 +8,7 @@ import { MeshipayBrand } from '@/constants/meshipay-brand';
 
 type PaymentConfirmCardProps = {
   payload: QrPayload;
+  payloadHydrated?: boolean;
   peerCount: number;
   loading?: boolean;
   onPay: () => void;
@@ -15,34 +17,50 @@ type PaymentConfirmCardProps = {
 
 export function PaymentConfirmCard({
   payload,
+  payloadHydrated = false,
   peerCount,
   loading,
   onPay,
   onCancel,
 }: PaymentConfirmCardProps) {
+  const canPay = peerCount > 0 && !loading;
+  const payeeLabel = payloadHydrated && payload.eventName ? payload.eventName : 'GATE RECEIVER';
+
   return (
     <View style={styles.wrap}>
       <View style={styles.shadow} />
       <View style={styles.card}>
         <Text style={styles.heading}>CONFIRM PAYMENT</Text>
-        <Text style={styles.event}>{payload.eventName}</Text>
-        <Text style={styles.teams}>
-          {payload.homeTeam} vs {payload.awayTeam}
-        </Text>
-        <Text style={styles.meta}>{formatMatchWindow(payload.startAt, payload.endAt)}</Text>
-        <Text style={styles.meta}>
-          {payload.venue} · Gate {payload.gate} · {payload.seatLabel}
-        </Text>
-        <Text style={styles.meta}>Receiver: {shortAddress(payload.receiverAddress)}</Text>
+        <Text style={styles.payee}>{payeeLabel}</Text>
+        {!payloadHydrated ? (
+          <View style={styles.hydrateWrap}>
+            <MeshipayDotsLoader size="sm" label="LOADING TICKET DETAILS" />
+          </View>
+        ) : (
+          <>
+            <Text style={styles.teams}>
+              {payload.homeTeam} vs {payload.awayTeam}
+            </Text>
+            <Text style={styles.meta}>{formatMatchWindow(payload.startAt!, payload.endAt!)}</Text>
+            <Text style={styles.meta}>
+              {payload.venue} · Gate {payload.gate} · {payload.seatLabel}
+            </Text>
+          </>
+        )}
+        <Text style={styles.meta}>Pay to {shortAddress(payload.receiverAddress)}</Text>
         <View style={styles.priceBox}>
           <Text style={styles.price}>{payload.priceUsdt}</Text>
           <Text style={styles.currency}>USDT</Text>
         </View>
         <Text style={styles.peer}>
-          {peerCount > 0 ? `Connected (${peerCount} peer)` : 'Joining P2P session...'}
+          {peerCount > 0 ? `Connected (${peerCount} peer)` : 'Connecting to gate...'}
         </Text>
-        <NeoBrutalButton label="PAY & UNLOCK TICKET" disabled={loading} onPress={onPay} />
-        {loading ? <ActivityIndicator color={MeshipayBrand.primary} /> : null}
+        <NeoBrutalButton label="PAY & UNLOCK TICKET" disabled={!canPay} onPress={onPay} />
+        {loading ? (
+          <View style={styles.payLoader}>
+            <MeshipayDotsLoader size="sm" label="SENDING PAYMENT" />
+          </View>
+        ) : null}
         <NeoBrutalButton label="CANCEL" variant="secondary" onPress={onCancel} />
       </View>
     </View>
@@ -75,11 +93,16 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textAlign: 'center',
   },
-  event: {
+  payee: {
     color: MeshipayBrand.foreground,
     fontSize: 18,
     fontWeight: '900',
     textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  hydrateWrap: {
+    paddingVertical: 8,
+    alignItems: 'center',
   },
   teams: {
     color: MeshipayBrand.muted,
@@ -117,5 +140,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     fontWeight: '700',
+  },
+  payLoader: {
+    alignItems: 'center',
+    paddingVertical: 4,
   },
 });

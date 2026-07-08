@@ -1,7 +1,8 @@
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { OnboardingScreen } from '@/components/onboarding/onboarding-screen';
+import { MeshipayDotsLoader } from '@/components/ui/meshipay-dots-loader';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { useWdkApp } from '@/features/wdk/wdk-hooks';
 
@@ -11,7 +12,7 @@ export default function IndexScreen() {
   if (state.status === 'INITIALIZING' || state.status === 'REINITIALIZING') {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color={MeshipayBrand.primary} />
+        <MeshipayDotsLoader size="lg" label="STARTING WALLET" />
       </View>
     );
   }

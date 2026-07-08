@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
+import { MeshipayDotsLoader } from '@/components/ui/meshipay-dots-loader';
 import { SeedPhraseModal } from '@/components/wallet/seed-phrase-modal';
 import { shortWalletAddress, useWalletStatusLabel } from '@/components/wallet/wallet-utils';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -63,6 +64,9 @@ export function WalletConnectButton({ compact, showImport = true }: WalletConnec
           disabled={loadingAction === 'generate'}
           onPress={handleGenerateSeed}
         />
+        {loadingAction === 'generate' ? (
+          <MeshipayDotsLoader size="sm" label="CREATING WALLET" />
+        ) : null}
         {showImport ? (
           <Pressable accessibilityRole="button" onPress={handleEnterPhrase} style={styles.importBtn}>
             <Text style={styles.importText}>IMPORT EXISTING WALLET</Text>

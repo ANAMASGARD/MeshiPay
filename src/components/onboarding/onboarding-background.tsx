@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -9,19 +10,21 @@ const CELL = 28;
 /**
  * Decorative pitch lines + subtle honeycomb mesh matching Onboarding-Screen.png.
  */
-export function OnboardingBackground() {
-  const honeycomb: { key: string; left: number; top: number }[] = [];
-
-  for (let row = 0; row < HONEYCOMB_ROWS; row += 1) {
-    for (let col = 0; col < HONEYCOMB_COLS; col += 1) {
-      const offsetX = row % 2 === 0 ? 0 : CELL * 0.5;
-      honeycomb.push({
-        key: `${row}-${col}`,
-        left: col * CELL + offsetX,
-        top: row * (CELL * 0.86),
-      });
+export const OnboardingBackground = memo(function OnboardingBackground() {
+  const honeycomb = useMemo(() => {
+    const cells: { key: string; left: number; top: number }[] = [];
+    for (let row = 0; row < HONEYCOMB_ROWS; row += 1) {
+      for (let col = 0; col < HONEYCOMB_COLS; col += 1) {
+        const offsetX = row % 2 === 0 ? 0 : CELL * 0.5;
+        cells.push({
+          key: `${row}-${col}`,
+          left: col * CELL + offsetX,
+          top: row * (CELL * 0.86),
+        });
+      }
     }
-  }
+    return cells;
+  }, []);
 
   return (
     <View pointerEvents="none" style={styles.root}>
@@ -47,7 +50,7 @@ export function OnboardingBackground() {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   root: {

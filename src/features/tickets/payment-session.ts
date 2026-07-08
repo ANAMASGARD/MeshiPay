@@ -127,6 +127,30 @@ export async function startPaymentSession(params: {
   };
 }
 
+export function sessionCreatedEvent(params: {
+  sessionId: string;
+  topic: string;
+  ticket: TicketRecord;
+  receiverAddress: string;
+}): TicketEventInput {
+  return {
+    type: 'SESSION_CREATED',
+    sessionId: params.sessionId,
+    topic: params.topic,
+    ticketId: params.ticket.ticketId,
+    receiverAddress: params.receiverAddress,
+    eventName: params.ticket.eventName,
+    homeTeam: params.ticket.homeTeam,
+    awayTeam: params.ticket.awayTeam,
+    venue: params.ticket.venue,
+    gate: params.ticket.gate,
+    seatLabel: params.ticket.seatLabel,
+    startAt: params.ticket.startAt,
+    endAt: params.ticket.endAt,
+    priceUsdt: params.ticket.priceUsdt,
+  };
+}
+
 export function sessionBootstrapEvents(params: {
   sessionId: string;
   topic: string;
@@ -134,15 +158,7 @@ export function sessionBootstrapEvents(params: {
   receiverAddress: string;
 }): TicketEventInput[] {
   return [
-    {
-      type: 'SESSION_CREATED',
-      sessionId: params.sessionId,
-      topic: params.topic,
-      ticketId: params.ticket.ticketId,
-      receiverAddress: params.receiverAddress,
-      eventName: params.ticket.eventName,
-      priceUsdt: params.ticket.priceUsdt,
-    },
+    sessionCreatedEvent(params),
     {
       type: 'HELLO',
       sessionId: params.sessionId,
@@ -151,6 +167,14 @@ export function sessionBootstrapEvents(params: {
       appVersion: '1.0.0',
     },
   ];
+}
+
+/** Receiver re-sends session metadata when a sender joins (P2P has no replay buffer). */
+export function shouldRebroadcastSessionToSender(event: TicketEvent): boolean {
+  if (event.type === 'HELLO' && event.role === 'sender') {
+    return true;
+  }
+  return event.type === 'PAYMENT_REQUESTED';
 }
 
 export function clearSessionFields(ticket: TicketRecord): TicketRecord {

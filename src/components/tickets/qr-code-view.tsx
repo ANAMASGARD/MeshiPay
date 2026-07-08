@@ -1,12 +1,21 @@
 import QRCodeLib from 'qrcode';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 
 type QrCodeViewProps = {
   value: string;
   size?: number;
+};
+
+type SvgRect = {
+  key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 function buildMatrix(value: string): boolean[][] {
@@ -27,42 +36,66 @@ function buildMatrix(value: string): boolean[][] {
   }
 }
 
-export function QrCodeView({ value, size = 160 }: QrCodeViewProps) {
-  const matrix = useMemo(() => buildMatrix(value), [value]);
-
-  const cellSize = useMemo(() => {
-    if (matrix.length === 0) {
-      return 0;
+function matrixToRunLengthRects(matrix: boolean[][], cellSize: number): SvgRect[] {
+  const rects: SvgRect[] = [];
+  for (let row = 0; row < matrix.length; row += 1) {
+    let col = 0;
+    while (col < matrix[row].length) {
+      if (!matrix[row][col]) {
+        col += 1;
+        continue;
+      }
+      const start = col;
+      while (col < matrix[row].length && matrix[row][col]) {
+        col += 1;
+      }
+      rects.push({
+        key: `${row}-${start}`,
+        x: start * cellSize,
+        y: row * cellSize,
+        width: (col - start) * cellSize,
+        height: cellSize,
+      });
     }
-    return size / matrix.length;
-  }, [matrix.length, size]);
+  }
+  return rects;
+}
 
-  if (matrix.length === 0) {
+export const QrCodeView = memo(function QrCodeView({ value, size = 160 }: QrCodeViewProps) {
+  const matrix = useMemo(() => buildMatrix(value), [value]);
+  const moduleCount = matrix.length;
+  const cellSize = moduleCount > 0 ? size / moduleCount : 0;
+
+  const rects = useMemo(
+    () => (moduleCount > 0 ? matrixToRunLengthRects(matrix, cellSize) : []),
+    [cellSize, matrix, moduleCount],
+  );
+
+  if (moduleCount === 0) {
     return <View style={[styles.wrap, { width: size, height: size }]} />;
   }
 
   return (
     <View style={[styles.wrap, { width: size, height: size }]}>
-      {matrix.map((row, rowIndex) =>
-        row.map((filled, colIndex) => (
-          <View
-            key={`${rowIndex}-${colIndex}`}
-            style={{
-              width: cellSize,
-              height: cellSize,
-              backgroundColor: filled ? MeshipayBrand.border : MeshipayBrand.cream,
-            }}
+      <Svg width={size} height={size}>
+        <Rect width={size} height={size} fill={MeshipayBrand.cream} />
+        {rects.map((rect) => (
+          <Rect
+            key={rect.key}
+            x={rect.x}
+            y={rect.y}
+            width={rect.width}
+            height={rect.height}
+            fill={MeshipayBrand.border}
           />
-        )),
-      )}
+        ))}
+      </Svg>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     backgroundColor: MeshipayBrand.cream,
     borderWidth: 2,
     borderColor: MeshipayBrand.border,

@@ -24,7 +24,8 @@ export function PitchScreen({ children, scroll = true, contentStyle }: PitchScre
         { paddingTop: insets.top + 16, paddingBottom: TAB_BAR_HEIGHT + insets.bottom + 16 },
         contentStyle,
       ]}
-      showsVerticalScrollIndicator={false}>
+      showsVerticalScrollIndicator={false}
+      removeClippedSubviews>
       {children}
     </ScrollView>
   ) : (

@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useMemo } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
@@ -30,8 +31,81 @@ function statusLabel(status: TicketRecord['status']): string {
   }
 }
 
-export function TicketOfferList({ tickets, onView, onReceivePayment }: TicketOfferListProps) {
-  const issued = tickets.filter((ticket) => ticket.kind === 'issued');
+type TicketOfferRowProps = {
+  ticket: TicketRecord;
+  onView: (ticketId: string) => void;
+  onReceivePayment: (ticket: TicketRecord) => void;
+};
+
+const TicketOfferRow = memo(function TicketOfferRow({
+  ticket,
+  onView,
+  onReceivePayment,
+}: TicketOfferRowProps) {
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowShadow} />
+      <View style={styles.rowBody}>
+        <View style={styles.topRow}>
+          {ticket.imageUri ? (
+            <Image
+              source={{ uri: ticket.imageUri }}
+              style={styles.thumb}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              recyclingKey={ticket.ticketId}
+            />
+          ) : (
+            <View style={styles.thumbPlaceholder}>
+              <MaterialCommunityIcons name="ticket" size={24} color={MeshipayBrand.muted} />
+            </View>
+          )}
+          <View style={styles.info}>
+            <Text style={styles.title}>{ticket.eventName}</Text>
+            <Text style={styles.sub}>
+              {ticket.homeTeam} vs {ticket.awayTeam}
+            </Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.price}>{ticket.priceUsdt} USDT</Text>
+              <Text style={styles.status}>{statusLabel(ticket.status)}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onView(ticket.ticketId)}
+            style={styles.actionBtn}>
+            <Text style={styles.actionText}>VIEW</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onReceivePayment(ticket)}
+            style={[styles.actionBtn, styles.actionPrimary]}>
+            <Text style={[styles.actionText, styles.actionTextPrimary]}>RECEIVE PAYMENT</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+});
+
+export const TicketOfferList = memo(function TicketOfferList({
+  tickets,
+  onView,
+  onReceivePayment,
+}: TicketOfferListProps) {
+  const issued = useMemo(
+    () => tickets.filter((ticket) => ticket.kind === 'issued'),
+    [tickets],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: TicketRecord }) => (
+      <TicketOfferRow ticket={item} onView={onView} onReceivePayment={onReceivePayment} />
+    ),
+    [onReceivePayment, onView],
+  );
 
   if (issued.length === 0) {
     return (
@@ -40,50 +114,18 @@ export function TicketOfferList({ tickets, onView, onReceivePayment }: TicketOff
   }
 
   return (
-    <View style={styles.wrap}>
-      {issued.map((ticket) => (
-        <View key={ticket.ticketId} style={styles.row}>
-          <View style={styles.rowShadow} />
-          <View style={styles.rowBody}>
-            <View style={styles.topRow}>
-              {ticket.imageUri ? (
-                <Image source={{ uri: ticket.imageUri }} style={styles.thumb} contentFit="cover" />
-              ) : (
-                <View style={styles.thumbPlaceholder}>
-                  <MaterialCommunityIcons name="ticket" size={24} color={MeshipayBrand.muted} />
-                </View>
-              )}
-              <View style={styles.info}>
-                <Text style={styles.title}>{ticket.eventName}</Text>
-                <Text style={styles.sub}>
-                  {ticket.homeTeam} vs {ticket.awayTeam}
-                </Text>
-                <View style={styles.metaRow}>
-                  <Text style={styles.price}>{ticket.priceUsdt} USDT</Text>
-                  <Text style={styles.status}>{statusLabel(ticket.status)}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.actions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => onView(ticket.ticketId)}
-                style={styles.actionBtn}>
-                <Text style={styles.actionText}>VIEW</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => onReceivePayment(ticket)}
-                style={[styles.actionBtn, styles.actionPrimary]}>
-                <Text style={[styles.actionText, styles.actionTextPrimary]}>RECEIVE PAYMENT</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ))}
-    </View>
+    <FlatList
+      data={issued}
+      keyExtractor={(item) => item.ticketId}
+      renderItem={renderItem}
+      scrollEnabled={false}
+      removeClippedSubviews
+      initialNumToRender={6}
+      windowSize={5}
+      contentContainerStyle={styles.wrap}
+    />
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: { gap: 12 },
