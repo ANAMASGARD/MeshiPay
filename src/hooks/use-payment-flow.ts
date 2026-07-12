@@ -1,94 +1,73 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { createSepoliaUsdtAsset, usdtToAtomic } from '@/features/tickets/payment-helpers';
 import {
-  isQrPayloadHydrated,
-  mergeQrPayloadDisplay,
-  parseTicketOfferQr,
-  type QrPayload,
-} from '@/features/tickets/qr-payload';
+  preflightSepoliaUsdtPayment,
+  sendSepoliaUsdtPayment,
+  type PaymentSendStage,
+} from '@/features/tickets/payment-send';
+import { formatUsdtFromAtomic, parseFeeAtomic } from '@/features/tickets/payment-helpers';
+import { parseTicketOfferQr, type QrPayload } from '@/features/tickets/qr-payload';
+import { mintReceivedTicketFromQr } from '@/features/tickets/ticket-mint';
 import { markSessionPaid } from '@/features/tickets/ticket-storage';
-import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
+import { useTickets } from '@/features/tickets/tickets-context';
 import { useAccount } from '@/features/wdk/wdk-hooks';
 
-export type PayStep = 'idle' | 'scanning' | 'confirm' | 'pending_transfer';
+export type PayStep = 'idle' | 'scanning' | 'confirm';
+
+const PAY_STAGE_LABELS: Record<PaymentSendStage, string> = {
+  checking_balance: 'CHECKING BALANCE',
+  estimating_fee: 'ESTIMATING FEE',
+  confirm_device: 'CONFIRM ON DEVICE',
+  submitting: 'SUBMITTING TX',
+};
 
 export function usePaymentFlow(walletReady: boolean) {
-  const { address, send } = useAccount({ network: 'ethereum', accountIndex: 0 });
-  const p2p = useTicketsP2P();
+  const { address, send, getBalance, estimateFee } = useAccount({
+    network: 'ethereum',
+    accountIndex: 0,
+  });
+  const tickets = useTickets();
 
   const [step, setStep] = useState<PayStep>('idle');
   const [payload, setPayload] = useState<QrPayload | null>(null);
   const [paying, setPaying] = useState(false);
+  const [payStage, setPayStage] = useState<PaymentSendStage | null>(null);
   const [joining, setJoining] = useState(false);
-  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
-  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
-
-  const displayPayload = useMemo(() => {
-    if (!payload) {
-      return null;
-    }
-    if (isQrPayloadHydrated(payload)) {
-      return payload;
-    }
-    if (p2p.sessionDisplay) {
-      return mergeQrPayloadDisplay(payload, p2p.sessionDisplay);
-    }
-    return payload;
-  }, [payload, p2p.sessionDisplay]);
-
-  useEffect(() => {
-    if (!pendingSessionId) {
-      return;
-    }
-    const received = p2p.tickets.find(
-      (ticket) => ticket.kind === 'received' && ticket.sessionId === pendingSessionId,
-    );
-    if (received) {
-      markSessionPaid(pendingSessionId).catch(() => undefined);
-      setStep('idle');
-      setPayload(null);
-      setPendingSessionId(null);
-      setLastTxHash(null);
-      Alert.alert('Ticket received', 'Your ticket is saved in the Tickets tab.');
-    }
-  }, [p2p.tickets, pendingSessionId]);
 
   const handleScanResult = useCallback(
-    async (raw: string) => {
-      const offer = parseTicketOfferQr(raw);
+    async (raw: string): Promise<boolean> => {
+      const trimmed = raw.trim();
+      const offer = parseTicketOfferQr(trimmed);
       if (offer) {
         Alert.alert(
           'Not a payment QR',
           'This is a ticket display QR. Ask the gatekeeper to tap Receive Payment for a payment QR.',
         );
-        setStep('idle');
-        return;
+        return false;
       }
 
       if (!address) {
         Alert.alert('Wallet required', 'Connect your wallet before paying.');
-        setStep('idle');
-        return;
+        return false;
       }
 
       setJoining(true);
       try {
-        const result = await p2p.joinPaymentSessionAsSender(raw, address);
+        const result = await tickets.joinPaymentSessionAsSender(trimmed, address);
         if (!result.ok) {
           Alert.alert('Invalid QR', result.reason);
-          setStep('idle');
-          return;
+          return false;
         }
 
         setPayload(result.payload);
         setStep('confirm');
+        return true;
       } finally {
         setJoining(false);
       }
     },
-    [address, p2p],
+    [address, tickets],
   );
 
   const handlePay = useCallback(async () => {
@@ -97,63 +76,118 @@ export function usePaymentFlow(walletReady: boolean) {
       return;
     }
 
-    setPaying(true);
     try {
-      const asset = createSepoliaUsdtAsset();
-      const amount = usdtToAtomic(payload.priceUsdt, asset.decimals);
-      const result = await send({
+      if (!getBalance || !estimateFee) {
+        throw new Error('Wallet balance APIs unavailable. Reload the app and retry.');
+      }
+
+      setPaying(true);
+      setPayStage('checking_balance');
+      const preflight = await preflightSepoliaUsdtPayment({
+        walletAddress: address,
+        getBalance,
+        estimateFee,
         to: payload.receiverAddress,
-        asset,
-        amount,
-      });
-      const txHash = result.hash ?? 'submitted';
-      setLastTxHash(txHash);
-      setPendingSessionId(payload.sessionId);
-
-      p2p.broadcastTicketEvent({
-        type: 'PAYMENT_SUBMITTED',
-        sessionId: payload.sessionId,
-        senderAddress: address,
         amountUsdt: payload.priceUsdt,
-        txHash,
+        onStage: setPayStage,
       });
+      const quotedFee = formatUsdtFromAtomic(parseFeeAtomic(preflight.fee));
 
-      setStep('pending_transfer');
-      Alert.alert('Payment sent', 'Waiting for your ticket transfer.');
+      Alert.alert(
+        'Confirm payment',
+        `Ticket: ${payload.priceUsdt} USDT\nNetwork fee: ${quotedFee} test USDT\n\nApprove with your device PIN or biometric if prompted.`,
+        [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay now',
+          onPress: () => {
+            void (async () => {
+              setPaying(true);
+              setPayStage('checking_balance');
+              try {
+                if (!getBalance || !estimateFee) {
+                  throw new Error('Wallet balance APIs unavailable. Reload the app and retry.');
+                }
+
+                const result = await sendSepoliaUsdtPayment({
+                  walletAddress: address,
+                  send,
+                  getBalance,
+                  estimateFee,
+                  to: payload.receiverAddress,
+                  amountUsdt: payload.priceUsdt,
+                  onStage: setPayStage,
+                });
+
+                const minted = await mintReceivedTicketFromQr({
+                  payload,
+                  txHash: result.hash,
+                  senderAddress: address,
+                });
+
+                if (!minted) {
+                  throw new Error(
+                    'Payment sent but ticket could not be saved. Contact the gatekeeper with your transaction hash.',
+                  );
+                }
+
+                await markSessionPaid(payload.sessionId);
+                await tickets.refresh();
+
+                setStep('idle');
+                setPayload(null);
+                tickets.clearActiveSession();
+                Alert.alert(
+                  'Payment complete',
+                  'Your ticket is saved in the Tickets tab.',
+                );
+              } catch (error) {
+                Alert.alert(
+                  'Payment failed',
+                  error instanceof Error ? error.message : 'Unable to send payment.',
+                );
+              } finally {
+                setPaying(false);
+                setPayStage(null);
+              }
+            })();
+          },
+        },
+        ],
+      );
     } catch (error) {
       Alert.alert(
-        'Payment failed',
-        error instanceof Error ? error.message : 'Unable to send payment.',
+        'Payment unavailable',
+        error instanceof Error ? error.message : 'Unable to quote this payment.',
       );
     } finally {
       setPaying(false);
+      setPayStage(null);
     }
-  }, [address, payload, p2p, send, walletReady]);
+  }, [address, estimateFee, getBalance, payload, send, tickets, walletReady]);
 
   const resetFlow = useCallback(() => {
     setStep('idle');
     setPayload(null);
-    setLastTxHash(null);
-    setPendingSessionId(null);
-    p2p.leaveRoom();
-  }, [p2p]);
+    setPayStage(null);
+    tickets.clearActiveSession();
+  }, [tickets]);
 
   const cancelConfirm = useCallback(() => {
     setPayload(null);
     setStep('idle');
-    p2p.leaveRoom();
-  }, [p2p]);
+    setPayStage(null);
+    tickets.clearActiveSession();
+  }, [tickets]);
 
   return {
     step,
     setStep,
-    payload: displayPayload,
-    payloadHydrated: displayPayload ? isQrPayloadHydrated(displayPayload) : false,
+    payload,
     paying,
+    payStageLabel: payStage ? PAY_STAGE_LABELS[payStage] : null,
     joining,
-    busyMessage: p2p.busyMessage,
-    lastTxHash,
-    peerCount: p2p.peerCount,
+    busyMessage: tickets.busyMessage,
     handleScanResult,
     handlePay,
     resetFlow,

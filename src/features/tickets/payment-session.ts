@@ -1,19 +1,19 @@
 import {
+  buildEncryptedPaymentQrString,
   buildQrPayload,
   createReceiptId,
   createSessionId,
   isQrExpired,
-  parseQrPayload,
-  verifyQrPayload,
+  parseAndDecryptPaymentQr,
   type QrPayload,
+  type QrPayloadEnvelope,
 } from '@/features/tickets/qr-payload';
 import {
+  getTicketById,
   isSessionPaid,
   savePaymentSession,
   upsertTicket,
 } from '@/features/tickets/ticket-storage';
-import { toTransferPayload } from '@/features/tickets/ticket-transfer';
-import type { TicketEvent, TicketEventInput } from '@/features/tickets/ticket-events';
 import type { AttendeeRecord, PaymentSession, TicketRecord } from '@/features/tickets/ticket-types';
 
 export const SESSION_TTL_MS = 15 * 60 * 1000;
@@ -21,7 +21,14 @@ export const SESSION_TTL_MS = 15 * 60 * 1000;
 export type PaymentFulfillment = {
   attendee: AttendeeRecord;
   updatedTicket: TicketRecord;
-  events: TicketEventInput[];
+};
+
+export type PaymentSubmitted = {
+  sessionId: string;
+  senderAddress: string;
+  amountUsdt: string;
+  txHash: string;
+  eventId: string;
 };
 
 export type ValidateSessionResult =
@@ -29,14 +36,10 @@ export type ValidateSessionResult =
   | { ok: false; reason: string };
 
 export async function validateAndJoinSession(raw: string): Promise<ValidateSessionResult> {
-  const parsed = parseQrPayload(raw);
+  const trimmed = raw.trim();
+  const parsed = await parseAndDecryptPaymentQr(trimmed);
   if (!parsed) {
     return { ok: false, reason: 'This QR is not a Meshipay payment session.' };
-  }
-
-  const validHash = await verifyQrPayload(parsed);
-  if (!validHash) {
-    return { ok: false, reason: 'QR payload hash mismatch — possible tampering.' };
   }
 
   if (isQrExpired(parsed)) {
@@ -48,13 +51,23 @@ export async function validateAndJoinSession(raw: string): Promise<ValidateSessi
     return { ok: false, reason: 'This session was already settled.' };
   }
 
+  const liveTicket = await getTicketById(parsed.ticketId);
+  if (liveTicket) {
+    if (liveTicket.sessionId !== parsed.sessionId) {
+      return {
+        ok: false,
+        reason: 'This QR was replaced. Ask the receiver to generate a fresh one.',
+      };
+    }
+    if (liveTicket.status !== 'awaiting_payment') {
+      return { ok: false, reason: 'This ticket is no longer awaiting payment.' };
+    }
+  }
+
   return { ok: true, payload: parsed };
 }
 
-export function canFulfillPayment(
-  ticket: TicketRecord,
-  payment: Extract<TicketEvent, { type: 'PAYMENT_SUBMITTED' }>,
-): boolean {
+export function canFulfillPayment(ticket: TicketRecord, payment: PaymentSubmitted): boolean {
   if (!payment.txHash || payment.txHash.trim() === '') {
     return false;
   }
@@ -73,9 +86,8 @@ export async function startPaymentSession(params: {
   receiverAddress: string;
 }): Promise<{
   ticket: TicketRecord;
-  payload: QrPayload;
+  payload: QrPayloadEnvelope;
   qrString: string;
-  bootstrapEvents: TicketEventInput[];
 }> {
   const sessionId = createSessionId();
   const pricedTicket: TicketRecord = {
@@ -90,12 +102,12 @@ export async function startPaymentSession(params: {
     receiverAddress: params.receiverAddress,
     expiresAt,
   });
+  const qrString = await buildEncryptedPaymentQrString(payload);
   const nextTicket: TicketRecord = {
     ...pricedTicket,
     status: 'awaiting_payment',
     sessionId,
-    topic: payload.topic,
-    qrPayload: JSON.stringify(payload),
+    qrPayload: qrString,
     qrHash: payload.payloadHash,
     updatedAt: new Date().toISOString(),
   };
@@ -104,84 +116,24 @@ export async function startPaymentSession(params: {
   const paymentSession: PaymentSession = {
     sessionId,
     ticketId: nextTicket.ticketId,
-    topic: payload.topic,
-    qrPayload: JSON.stringify(payload),
+    qrPayload: qrString,
     qrHash: payload.payloadHash,
     expiresAt,
     createdAt: new Date().toISOString(),
   };
   await savePaymentSession(paymentSession);
 
-  const bootstrapEvents = sessionBootstrapEvents({
-    sessionId,
-    topic: payload.topic,
-    ticket: nextTicket,
-    receiverAddress: params.receiverAddress,
-  });
-
   return {
     ticket: nextTicket,
     payload,
-    qrString: JSON.stringify(payload),
-    bootstrapEvents,
+    qrString,
   };
-}
-
-export function sessionCreatedEvent(params: {
-  sessionId: string;
-  topic: string;
-  ticket: TicketRecord;
-  receiverAddress: string;
-}): TicketEventInput {
-  return {
-    type: 'SESSION_CREATED',
-    sessionId: params.sessionId,
-    topic: params.topic,
-    ticketId: params.ticket.ticketId,
-    receiverAddress: params.receiverAddress,
-    eventName: params.ticket.eventName,
-    homeTeam: params.ticket.homeTeam,
-    awayTeam: params.ticket.awayTeam,
-    venue: params.ticket.venue,
-    gate: params.ticket.gate,
-    seatLabel: params.ticket.seatLabel,
-    startAt: params.ticket.startAt,
-    endAt: params.ticket.endAt,
-    priceUsdt: params.ticket.priceUsdt,
-  };
-}
-
-export function sessionBootstrapEvents(params: {
-  sessionId: string;
-  topic: string;
-  ticket: TicketRecord;
-  receiverAddress: string;
-}): TicketEventInput[] {
-  return [
-    sessionCreatedEvent(params),
-    {
-      type: 'HELLO',
-      sessionId: params.sessionId,
-      role: 'receiver',
-      walletAddress: params.receiverAddress,
-      appVersion: '1.0.0',
-    },
-  ];
-}
-
-/** Receiver re-sends session metadata when a sender joins (P2P has no replay buffer). */
-export function shouldRebroadcastSessionToSender(event: TicketEvent): boolean {
-  if (event.type === 'HELLO' && event.role === 'sender') {
-    return true;
-  }
-  return event.type === 'PAYMENT_REQUESTED';
 }
 
 export function clearSessionFields(ticket: TicketRecord): TicketRecord {
   return {
     ...ticket,
     sessionId: undefined,
-    topic: undefined,
     qrPayload: undefined,
     qrHash: undefined,
     status: ticket.remainingQuantity > 0 ? 'draft' : ticket.status,
@@ -191,7 +143,7 @@ export function clearSessionFields(ticket: TicketRecord): TicketRecord {
 
 export function fulfillPayment(params: {
   ticket: TicketRecord;
-  payment: Extract<TicketEvent, { type: 'PAYMENT_SUBMITTED' }>;
+  payment: PaymentSubmitted;
   receiverAddress: string;
 }): PaymentFulfillment {
   const receiptId = createReceiptId();
@@ -220,39 +172,9 @@ export function fulfillPayment(params: {
     updatedTicket = clearSessionFields(updatedTicket);
   }
 
-  const transferPayload = toTransferPayload(params.ticket, params.payment.txHash);
-  const events: TicketEventInput[] = [
-    {
-      type: 'PAYMENT_ACK',
-      sessionId: params.payment.sessionId,
-      txHash: params.payment.txHash,
-      senderAddress: params.payment.senderAddress,
-    },
-    {
-      type: 'TICKET_TRANSFERRED',
-      sessionId: params.payment.sessionId,
-      ticketId: params.ticket.ticketId,
-      senderAddress: params.payment.senderAddress,
-      receiverAddress: params.receiverAddress,
-      receiptId,
-      payload: transferPayload,
-    },
-    {
-      type: 'ATTENDEE_SYNCED',
-      sessionId: params.payment.sessionId,
-      attendeeId: attendee.attendeeId,
-      ticketId: params.ticket.ticketId,
-      senderAddress: params.payment.senderAddress,
-      amountUsdt: params.payment.amountUsdt,
-      txHash: params.payment.txHash,
-      receiptId,
-    },
-    {
-      type: 'INVENTORY_UPDATED',
-      sessionId: params.payment.sessionId,
-      ticketId: params.ticket.ticketId,
-      remainingQuantity: remaining,
-    },
-  ];
-  return { attendee, updatedTicket, events };
+  return { attendee, updatedTicket };
+}
+
+export function createPaymentEventId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }

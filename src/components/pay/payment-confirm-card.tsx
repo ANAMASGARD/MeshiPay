@@ -8,23 +8,23 @@ import { MeshipayBrand } from '@/constants/meshipay-brand';
 
 type PaymentConfirmCardProps = {
   payload: QrPayload;
-  payloadHydrated?: boolean;
-  peerCount: number;
+  walletReady?: boolean;
   loading?: boolean;
+  payStageLabel?: string | null;
   onPay: () => void;
   onCancel: () => void;
 };
 
 export function PaymentConfirmCard({
   payload,
-  payloadHydrated = false,
-  peerCount,
+  walletReady = true,
   loading,
+  payStageLabel,
   onPay,
   onCancel,
 }: PaymentConfirmCardProps) {
-  const canPay = peerCount > 0 && !loading;
-  const payeeLabel = payloadHydrated && payload.eventName ? payload.eventName : 'GATE RECEIVER';
+  const canPay = walletReady && !loading;
+  const payeeLabel = payload.eventName;
 
   return (
     <View style={styles.wrap}>
@@ -32,33 +32,28 @@ export function PaymentConfirmCard({
       <View style={styles.card}>
         <Text style={styles.heading}>CONFIRM PAYMENT</Text>
         <Text style={styles.payee}>{payeeLabel}</Text>
-        {!payloadHydrated ? (
-          <View style={styles.hydrateWrap}>
-            <MeshipayDotsLoader size="sm" label="LOADING TICKET DETAILS" />
-          </View>
-        ) : (
-          <>
-            <Text style={styles.teams}>
-              {payload.homeTeam} vs {payload.awayTeam}
-            </Text>
-            <Text style={styles.meta}>{formatMatchWindow(payload.startAt!, payload.endAt!)}</Text>
-            <Text style={styles.meta}>
-              {payload.venue} · Gate {payload.gate} · {payload.seatLabel}
-            </Text>
-          </>
-        )}
+        <Text style={styles.teams}>
+          {payload.homeTeam} vs {payload.awayTeam}
+        </Text>
+        <Text style={styles.meta}>{formatMatchWindow(payload.startAt, payload.endAt)}</Text>
+        <Text style={styles.meta}>
+          {payload.venue} · Gate {payload.gate} · {payload.seatLabel}
+        </Text>
         <Text style={styles.meta}>Pay to {shortAddress(payload.receiverAddress)}</Text>
         <View style={styles.priceBox}>
           <Text style={styles.price}>{payload.priceUsdt}</Text>
-          <Text style={styles.currency}>USDT</Text>
+          <Text style={styles.currency}>USDT · TETHER WALLET</Text>
         </View>
-        <Text style={styles.peer}>
-          {peerCount > 0 ? `Connected (${peerCount} peer)` : 'Connecting to gate...'}
+        <Text style={styles.gateway}>
+          Ticket unlocks locally after on-chain USDT payment.
         </Text>
         <NeoBrutalButton label="PAY & UNLOCK TICKET" disabled={!canPay} onPress={onPay} />
         {loading ? (
           <View style={styles.payLoader}>
-            <MeshipayDotsLoader size="sm" label="SENDING PAYMENT" />
+            <MeshipayDotsLoader
+              size="sm"
+              label={payStageLabel ?? 'SENDING PAYMENT'}
+            />
           </View>
         ) : null}
         <NeoBrutalButton label="CANCEL" variant="secondary" onPress={onCancel} />
@@ -68,7 +63,7 @@ export function PaymentConfirmCard({
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'relative', marginTop: 8 },
+  wrap: { position: 'relative', marginTop: 12 },
   shadow: {
     position: 'absolute',
     left: 0,
@@ -98,35 +93,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     textAlign: 'center',
-    textTransform: 'uppercase',
-  },
-  hydrateWrap: {
-    paddingVertical: 8,
-    alignItems: 'center',
   },
   teams: {
-    color: MeshipayBrand.muted,
-    fontSize: 14,
-    textAlign: 'center',
+    color: MeshipayBrand.foreground,
+    fontSize: 15,
     fontWeight: '700',
+    textAlign: 'center',
   },
   meta: {
     color: MeshipayBrand.muted,
     fontSize: 13,
     textAlign: 'center',
+    lineHeight: 18,
   },
   priceBox: {
     borderWidth: 2,
     borderColor: MeshipayBrand.border,
     borderRadius: 12,
     backgroundColor: MeshipayBrand.cream,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginVertical: 6,
+    marginTop: 4,
   },
   price: {
     color: MeshipayBrand.border,
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '900',
   },
   currency: {
@@ -134,12 +125,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
+    opacity: 0.8,
   },
-  peer: {
+  gateway: {
     color: MeshipayBrand.muted,
     fontSize: 12,
-    textAlign: 'center',
     fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 17,
   },
   payLoader: {
     alignItems: 'center',

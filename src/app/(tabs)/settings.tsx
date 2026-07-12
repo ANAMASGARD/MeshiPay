@@ -6,11 +6,12 @@ import { Alert, Linking, StyleSheet, Text } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { NeoBrutalMenuRow } from '@/components/ui/neo-brutal-menu-row';
+import { WalletAddressCopyRow } from '@/components/wallet/wallet-address-copy-row';
+import { WalletBalanceRing } from '@/components/wallet/wallet-balance-ring';
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { shortWalletAddress } from '@/components/wallet/wallet-utils';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { clearTicketData } from '@/features/tickets/ticket-storage';
-import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
 import { useAccount, useWdkApp, useWalletManager } from '@/features/wdk/wdk-hooks';
 
 export default function SettingsScreen() {
@@ -18,19 +19,14 @@ export default function SettingsScreen() {
   const { state } = useWdkApp();
   const { lock, getMnemonic } = useWalletManager();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
-  const p2p = useTicketsP2P();
   const [cameraPermission] = useCameraPermissions();
 
   const profileLabel = address
     ? `Meshipay User (${shortWalletAddress(address)})`
     : 'Meshipay User';
 
-  const p2pStatus =
-    p2p.peerCount > 0
-      ? `Hyperswarm: Online (${p2p.peerCount} peer)`
-      : p2p.isActive
-        ? 'Hyperswarm: Online (0 peers)'
-        : 'Hyperswarm: Offline';
+  const paymentStatus =
+    'Payments: Tether Wallet (Sepolia USDT)\nReceiver verifies via on-chain USDT';
 
   const demoReady =
     state.status === 'READY' && !!address ? 'Wallet ready for demo' : 'Connect wallet to start';
@@ -48,14 +44,6 @@ export default function SettingsScreen() {
       },
     ]);
   }, [lock, router]);
-
-  const handleWallet = useCallback(() => {
-    if (state.status !== 'READY' || !address) {
-      Alert.alert('Wallet locked', 'Connect your wallet first.');
-      return;
-    }
-    Alert.alert('Wallet address', address);
-  }, [address, state.status]);
 
   const handleBackup = useCallback(async () => {
     if (state.status !== 'READY') {
@@ -98,21 +86,27 @@ export default function SettingsScreen() {
 
       <WalletConnectButton showImport />
 
+      {state.status === 'READY' && address ? (
+        <>
+          <WalletBalanceRing address={address} />
+          <WalletAddressCopyRow address={address} />
+        </>
+      ) : null}
+
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="account-circle-outline" size={28} color={MeshipayBrand.border} />}
         subtitle={profileLabel}
         title="PROFILE"
       />
       <NeoBrutalMenuRow
-        icon={<MaterialCommunityIcons name="lan-connect" size={28} color={MeshipayBrand.border} />}
-        subtitle={p2pStatus}
-        title="P2P STATUS"
+        icon={<MaterialCommunityIcons name="wallet-outline" size={28} color={MeshipayBrand.border} />}
+        subtitle={paymentStatus}
+        title="PAYMENTS"
       />
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="wallet-outline" size={28} color={MeshipayBrand.border} />}
-        subtitle="View address"
+        subtitle={address ? shortWalletAddress(address) : 'Unlock wallet to view'}
         title="WALLET"
-        onPress={handleWallet}
       />
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="lock-outline" size={28} color={MeshipayBrand.border} />}

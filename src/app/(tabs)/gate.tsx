@@ -11,13 +11,13 @@ import { NeoBrutalSectionButton } from '@/components/ui/neo-brutal-section-butto
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
-import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
+import { useTickets } from '@/features/tickets/tickets-context';
 import { useWdkApp } from '@/features/wdk/wdk-hooks';
 
 export default function GateScreen() {
   const router = useRouter();
   const { state } = useWdkApp();
-  const { tickets, attendees, loading: ticketsLoading } = useTicketsP2P();
+  const { tickets, attendees, loading: ticketsLoading } = useTickets();
   const walletReady = state.status === 'READY';
 
   const [paymentTicket, setPaymentTicket] = useState<TicketRecord | null>(null);

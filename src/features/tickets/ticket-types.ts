@@ -25,7 +25,6 @@ export type TicketRecord = {
   receiverAddress: string;
   senderAddress?: string;
   sessionId?: string;
-  topic?: string;
   qrPayload?: string;
   qrHash?: string;
   receiptId?: string;
@@ -53,7 +52,6 @@ export type AttendeeRecord = {
 export type PaymentSession = {
   sessionId: string;
   ticketId: string;
-  topic: string;
   qrPayload: string;
   qrHash: string;
   expiresAt: number;
@@ -82,4 +80,6 @@ export type ActiveSession = {
   role: SessionRole;
   /** Hash-verified receiver address from payment QR (sender role only). */
   receiverAddress?: string;
+  /** Sepolia block number when receiver session started (chain demo mode). */
+  watchFromBlock?: number;
 };

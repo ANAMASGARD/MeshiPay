@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { QrCodeView } from '@/components/tickets/qr-code-view';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { formatMatchWindow, shortAddress } from '@/features/tickets/payment-helpers';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
@@ -77,7 +78,11 @@ export const TicketCard = memo(function TicketCard({ ticket, onPress }: TicketCa
         </View>
 
         <View style={styles.qrSlot}>
-          <MaterialCommunityIcons name="qrcode" size={64} color={MeshipayBrand.border} />
+          {ticket.ticketQrPayload ? (
+            <QrCodeView value={ticket.ticketQrPayload} size={88} />
+          ) : (
+            <MaterialCommunityIcons name="qrcode" size={64} color={MeshipayBrand.border} />
+          )}
         </View>
       </View>
     </View>

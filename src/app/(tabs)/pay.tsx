@@ -1,12 +1,11 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { PaymentConfirmCard } from '@/components/pay/payment-confirm-card';
 import { QrScanner } from '@/components/pay/qr-scanner';
-import { MeshipayInlineLoader } from '@/components/ui/meshipay-inline-loader';
 import { MeshipayLoadingOverlay } from '@/components/ui/meshipay-loading-overlay';
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
@@ -20,20 +19,17 @@ export default function PayScreen() {
   const { state } = useWdkApp();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
   const walletReady = state.status === 'READY' && !!address;
+  const [scanKey, setScanKey] = useState(0);
 
   const {
     step,
     setStep,
     payload,
-    payloadHydrated,
     paying,
+    payStageLabel,
     joining,
-    busyMessage,
-    lastTxHash,
-    peerCount,
     handleScanResult,
     handlePay,
-    resetFlow,
     cancelConfirm,
   } = usePaymentFlow(walletReady);
 
@@ -51,12 +47,17 @@ export default function PayScreen() {
     return (
       <View style={styles.scannerRoot}>
         <QrScanner
+          key={scanKey}
           onScan={(data) => {
-            handleScanResult(data).catch(() => undefined);
+            void handleScanResult(data).then((ok) => {
+              if (!ok) {
+                setScanKey((value) => value + 1);
+              }
+            });
           }}
           onClose={() => setStep('idle')}
         />
-        <MeshipayLoadingOverlay visible={joining} label="JOINING SESSION" />
+        <MeshipayLoadingOverlay visible={joining} label="READING QR" />
       </View>
     );
   }
@@ -70,24 +71,12 @@ export default function PayScreen() {
       {step === 'confirm' && payload ? (
         <PaymentConfirmCard
           payload={payload}
-          payloadHydrated={payloadHydrated}
-          peerCount={peerCount}
+          walletReady={walletReady}
           loading={paying}
+          payStageLabel={payStageLabel}
           onPay={handlePay}
           onCancel={cancelConfirm}
         />
-      ) : step === 'pending_transfer' ? (
-        <View style={styles.pendingCard}>
-          <Text style={styles.pendingTitle}>TICKET TRANSFER PENDING</Text>
-          <MeshipayInlineLoader label="WAITING FOR TICKET" height={80} />
-          <Text style={styles.pendingCopy}>
-            Payment confirmed. Your ticket will appear in Tickets when the gatekeeper transfers it.
-          </Text>
-          {lastTxHash ? <Text style={styles.tx}>Tx: {lastTxHash}</Text> : null}
-          <Pressable accessibilityRole="button" onPress={resetFlow} style={styles.doneBtn}>
-            <Text style={styles.doneText}>DONE</Text>
-          </Pressable>
-        </View>
       ) : (
         <Pressable
           accessibilityRole="button"
@@ -100,14 +89,12 @@ export default function PayScreen() {
             <Text style={styles.scannerTitle}>SCAN QR CODE</Text>
             <Text style={styles.scannerCopy}>
               {walletReady
-                ? 'Tap to open camera and scan a payment QR from the gate.'
+                ? 'Scan a gate payment QR, pay with Tether Wallet, ticket saves locally.'
                 : 'Connect your wallet to scan and pay.'}
             </Text>
           </View>
         </Pressable>
       )}
-
-      <MeshipayLoadingOverlay visible={busyMessage !== null} label={busyMessage ?? ''} />
     </PitchScreen>
   );
 }
@@ -161,49 +148,5 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
     opacity: 0.85,
-  },
-  pendingCard: {
-    borderWidth: 3,
-    borderColor: MeshipayBrand.border,
-    borderRadius: 14,
-    backgroundColor: MeshipayBrand.backgroundElevated,
-    padding: 16,
-    gap: 10,
-    marginTop: 12,
-  },
-  pendingTitle: {
-    color: MeshipayBrand.primary,
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textAlign: 'center',
-  },
-  pendingCopy: {
-    color: MeshipayBrand.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  tx: {
-    color: MeshipayBrand.foreground,
-    fontSize: 11,
-    fontFamily: 'monospace',
-    textAlign: 'center',
-  },
-  doneBtn: {
-    alignSelf: 'center',
-    borderWidth: 2,
-    borderColor: MeshipayBrand.border,
-    borderRadius: 10,
-    backgroundColor: MeshipayBrand.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    marginTop: 4,
-  },
-  doneText: {
-    color: MeshipayBrand.border,
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 1,
   },
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ReceiverSessionCard } from '@/components/receiver/receiver-session-card';
@@ -8,7 +8,7 @@ import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { isQrExpired, parseQrPayload } from '@/features/tickets/qr-payload';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
-import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
+import { useTickets } from '@/features/tickets/tickets-context';
 import { useAccount, useWdkApp } from '@/features/wdk/wdk-hooks';
 
 type PaymentQrModalProps = {
@@ -20,7 +20,7 @@ type PaymentQrModalProps = {
 export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps) {
   const { state } = useWdkApp();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
-  const p2p = useTicketsP2P();
+  const tickets = useTickets();
 
   const [qrString, setQrString] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -28,21 +28,24 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
   const [starting, setStarting] = useState(false);
   const [qrReady, setQrReady] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const autoStartedRef = useRef(false);
 
   const walletReady = state.status === 'READY' && !!address;
 
   useEffect(() => {
     setActiveTicket(ticket);
-    if (ticket.qrPayload && ticket.sessionId) {
-      setQrString(ticket.qrPayload);
-      setSessionId(ticket.sessionId);
-      setQrReady(true);
-    } else {
+  }, [ticket]);
+
+  useEffect(() => {
+    if (!visible) {
+      autoStartedRef.current = false;
       setQrString(null);
       setSessionId(null);
       setQrReady(false);
+      return;
     }
-  }, [ticket]);
+    setNow(Date.now());
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -65,9 +68,6 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
     return () => cancelAnimationFrame(frame);
   }, [qrString]);
 
-  const parsedQr = qrString ? parseQrPayload(qrString) : null;
-  const expired = parsedQr ? isQrExpired(parsedQr, now) : false;
-
   const startSession = useCallback(async () => {
     if (!walletReady || !address) {
       Alert.alert('Wallet required', 'Connect your wallet before receiving payments.');
@@ -81,7 +81,7 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
     setStarting(true);
     setQrReady(false);
     try {
-      const started = await p2p.beginPaymentSession(
+      const started = await tickets.beginPaymentSession(
         activeTicket,
         activeTicket.priceUsdt,
         address,
@@ -97,31 +97,57 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
     } finally {
       setStarting(false);
     }
-  }, [activeTicket, address, p2p, walletReady]);
+  }, [activeTicket, address, tickets, walletReady]);
+
+  useEffect(() => {
+    if (!visible || !walletReady || autoStartedRef.current || starting) {
+      return;
+    }
+    autoStartedRef.current = true;
+    void startSession();
+  }, [visible, walletReady, starting, startSession]);
+
+  const parsedQr = qrString ? parseQrPayload(qrString) : null;
+  const expired = parsedQr ? isQrExpired(parsedQr, now) : false;
 
   const remainingMs = parsedQr ? Math.max(0, parsedQr.expiresAt - now) : 0;
   const remainingMin = Math.floor(remainingMs / 60000);
   const remainingSec = Math.floor((remainingMs % 60000) / 1000);
 
-  const showOverlay = starting || p2p.busyMessage === 'GENERATING QR';
+  const showOverlay = starting || tickets.busyMessage === 'GENERATING QR';
+
+  const handleClose = useCallback(() => {
+    tickets.clearActiveSession();
+    onClose();
+  }, [onClose, tickets]);
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={styles.root}>
         <View style={styles.header}>
           <Text style={styles.heading}>RECEIVE PAYMENT</Text>
-          <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeBtn}>
+          <Pressable accessibilityRole="button" onPress={handleClose} style={styles.closeBtn}>
             <Text style={styles.closeText}>CLOSE</Text>
           </Pressable>
         </View>
 
-        {!qrString || expired ? (
+        {!walletReady ? (
+          <View style={styles.startWrap}>
+            <Text style={styles.event}>{activeTicket.eventName}</Text>
+            <Text style={styles.price}>{activeTicket.priceUsdt} USDT</Text>
+            <Text style={styles.expiredCopy}>Connect your wallet to generate a payment QR.</Text>
+          </View>
+        ) : !qrString || expired ? (
           <View style={styles.startWrap}>
             <Text style={styles.event}>{activeTicket.eventName}</Text>
             <Text style={styles.price}>{activeTicket.priceUsdt} USDT</Text>
             {expired ? (
               <Text style={styles.expiredCopy}>Previous QR expired. Generate a fresh one.</Text>
-            ) : null}
+            ) : starting ? (
+              <MeshipayInlineLoader label="GENERATING QR" height={120} />
+            ) : (
+              <Text style={styles.expiredCopy}>Tap below to generate a fresh payment QR.</Text>
+            )}
             <NeoBrutalButton
               label={expired ? 'REGENERATE QR' : 'SHOW PAYMENT QR'}
               disabled={!walletReady || starting}
@@ -130,6 +156,9 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
           </View>
         ) : (
           <>
+            <Text style={styles.keepOpenCopy}>
+              Keep this screen open — watching Sepolia for incoming USDT payment.
+            </Text>
             <Text style={styles.timer}>
               Expires in {remainingMin}:{remainingSec.toString().padStart(2, '0')}
             </Text>
@@ -137,7 +166,6 @@ export function PaymentQrModal({ visible, ticket, onClose }: PaymentQrModalProps
               <ReceiverSessionCard
                 ticket={activeTicket}
                 qrPayload={qrString}
-                peerCount={p2p.peerCount}
                 sessionId={sessionId ?? ''}
               />
             ) : (
@@ -222,6 +250,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  keepOpenCopy: {
+    color: MeshipayBrand.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 17,
+    paddingHorizontal: 8,
   },
   qrLoaderWrap: {
     borderWidth: 3,

@@ -40,11 +40,9 @@ module.exports = defineConfig([
     },
   },
   {
-    files: ['src/services/p2p/p2p-worklet.entry.js'],
-    languageOptions: {
-      globals: {
-        BareKit: 'readonly',
-      },
+    files: ['src/**/*.test.ts', 'src/**/__tests__/**/*.ts'],
+    rules: {
+      'import/first': 'off',
     },
   },
 ]);

@@ -15,6 +15,9 @@ echo "IMPORTANT: Meshipay cannot run in Expo Go."
 echo "Open the 'meshipay' app on your phone — NOT 'Expo Go'."
 echo "Expo Go will crash with PlatformConstants / runtime-not-ready errors."
 echo ""
+echo "This script installs a DEVELOPMENT BUILD (needs Metro + USB)."
+echo "For a phone that runs WITHOUT your laptop, use: npm run android:install-standalone"
+echo ""
 
 adb_cmd() {
   if [ -n "${ANDROID_SERIAL:-}" ]; then
@@ -106,9 +109,8 @@ echo "Forwarding Metro port over USB (required for physical devices)..."
 adb_cmd reverse tcp:8081 tcp:8081
 
 if [ "$REGENERATE_BUNDLES" = "1" ]; then
-  echo "Regenerating WDK and P2P bundles..."
+  echo "Regenerating WDK bundle..."
   npm run generate:wdk
-  npm run pack:p2p
 fi
 
 if [ "$CLEAN_PREBUILD" = "1" ]; then

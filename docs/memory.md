@@ -1,156 +1,83 @@
 # Meshipay — project memory
 
-Session log for agents and humans. Update after meaningful UI, native, or architecture changes.
+Current engineering handoff for the WDK-only ticket-payment gateway.
 
-**Last updated:** 2026-07-08 (demo APK + swipe tabs + payment hardening)
-
----
-
-## Verification status
-
-```bash
-npm run verify   # lint (expo lint) + typecheck (tsc --noEmit)
-```
-
-- **Latest run:** passed — swipe tabs, pay swipe-lock, SESSION_CREATED re-broadcast.
-- **Release APK:** `android/app/build/outputs/apk/release/app-release.apk` (standalone, no Metro).
-- **Native rebuild:** `npm run android:recover` after plugin / icon / native changes.
-- **Unit/integration tests:** none configured yet.
+**Last updated:** 2026-07-12 18:15 IST
 
 ---
 
-## Git milestones
+## Current product state
 
-| Commit | Summary |
-|--------|---------|
-| `70c81e8` | Ticket payment workflow — tab nav, P2P session QR, TicketsP2PProvider |
-| `0d60740` | Demo UI polish — session-derived P2P, wallet connect |
-| `18e0cf6` | Loading dots, slim QR, swipe tabs, payment re-broadcast, README/APK docs |
+- **Track:** Tether WDK. The app is a decentralized football ticket-payment gateway; it has no Meshipay backend and no Hyperswarm/P2P runtime.
+- **Settlement:** Sender uses WDK ERC-4337 to send Candide Sepolia mock USD₮ to the receiver wallet.
+- **Ticket delivery:** Receiver creates an encrypted, hash-verified payment QR. Sender scans it locally, sees the ticket data, pays, and mints a local ticket only after WDK returns a transaction hash.
+- **Receiver fulfillment:** The receiver polls Sepolia mock-USDT `Transfer` logs from the QR session's start block; on matching receiver and exact amount, it saves an attendee locally.
+- **Storage:** Tickets, payment sessions, and attendees are stored in AsyncStorage on their respective phones. No central ticket inventory or payment database exists.
 
----
+## Critical WDK configuration
 
-## Completed work (2026-07-08 — loading dots + performance)
+- **Expo / RN:** Expo SDK 54, React Native 0.81.5, React 19.1.0. Do not upgrade to SDK 57.
+- **Network:** Ethereum Sepolia, chain ID `11155111`.
+- **Mock USD₮ contract:** `0xd077a400968890eacc75cdc901f0356c943e4fdb`.
+- **Bundler / paymaster:** Candide public v3 endpoints; Safe modules version must remain `'0.3.0'`.
+- **Fee mode:** paymaster-token mode. Sender needs mock USD₮ for ticket price plus network fee; Sepolia ETH is not required for the intended demo path.
+- **Demo ceiling:** `SEPOLIA_DEMO_TRANSFER_MAX_FEE_ATOMIC = 20_000_000` (20 test USD₮) in `src/config/wdk.ts`. It is intentionally testnet-only and is applied by both WDK and Meshipay preflight.
+- **Fee boundary:** WDK rejects fee quotes `>= transferMaxFee`; Meshipay preflight matches that condition exactly, preventing an avoidable WDK submission failure.
 
-### Yellow 3-dot loaders
+## Payment flow
 
-- **`MeshipayDotsLoader`** — Reanimated staggered bounce, `MeshipayBrand.primary`.
-- **`MeshipayInlineLoader`** — fixed-height inline placeholder.
-- **`MeshipayLoadingOverlay`** — full-screen dim + label for long ops.
-- Wired across Gate, Pay, Tickets, wallet connect, create-ticket, payment QR modal, WDK init.
-- `TicketsP2PProvider.busyMessage` during session start/join.
+1. Receiver creates a ticket and opens **Receive Payment** on Gate.
+2. The payment QR contains the full encrypted ticket envelope, receiver wallet, price, session ID, expiry, and integrity data.
+3. Sender scans from Pay. Ticket-offer display QRs are rejected; only payment QRs are accepted.
+4. Sender presses **Pay & Unlock Ticket**. The app performs balance and `quoteTransfer()` preflight, then displays the exact network-fee quote.
+5. Sender confirms. `sendSepoliaUsdtPayment()` calls WDK `send()` for a real ERC-4337 USDT transfer.
+6. Only a successful WDK result with `hash` mints the sender's ticket. A failed or absent hash does not create one.
+7. Receiver chain watcher sees the matching USDT Transfer log, writes the attendee, and shows **Payment verified**.
 
-### QR performance
-
-- **`QrCodeView`** — `react-native-svg` + run-length encoded rects (replaces 625 View cells).
-- **Slim payment QR** — bootstrap fields only in QR; display metadata via extended `SESSION_CREATED` P2P event.
-- **SESSION_CREATED re-broadcast** — receiver re-sends session metadata when sender `HELLO` / `PAYMENT_REQUESTED` arrives (P2P has no replay).
-- **UPI-style confirm** — amount + payee from hash-verified QR immediately; pay enabled once peer connected (details hydrate async).
-- **Legacy full QR** still parses/verifies for backward compatibility.
-- **`TicketCard`** list rows — static QR icon stub (no matrix encode on tab open).
-- Cover thumbnails: `expo-image` `cachePolicy="memory-disk"`.
-- **Swipe tabs** — `@react-navigation/material-top-tabs` + existing `react-native-pager-view`; swipe Gate ↔ Pay ↔ Tickets ↔ Settings; bottom `GlassTabBar` syncs on swipe.
-- Memoized `TicketOfferList`, `TicketCard`, `OnboardingBackground`; FlatList for gate ticket rows; lazy tab screens.
-
-### Pay flow hardening (post-review)
-
-- **`SESSION_CREATED` re-broadcast** when receiver sees sender `HELLO` / `PAYMENT_REQUESTED` (P2P no-replay fix).
-- **`usePaySwipeLock`** — disables Pay tab swipe during scan/confirm/pay; camera unmounts when tab blurred.
-- **`activeSessionRef`** updated synchronously on join/begin session.
-
-### Design spec
-
-- `docs/superpowers/specs/2026-07-08-loading-dots-perf-design.md`
-
----
-
-## Completed work (2026-07-08 — demo UI polish v2)
-
-### Goal
-
-Demo-ready UX: no visible Sepolia/WDK/role picker on main tabs. Backend unchanged (Sepolia WDK USDT + Hyperswarm P2P + AsyncStorage).
-
-### Demo-ready UI
-
-- Removed `SepoliaBadge`, "WDK WALLET", Sender/Receiver role picker from Gate/Pay/Settings.
-- **`WalletConnectButton`** — WDK-backed "Connect Tether Wallet" + import (`src/components/wallet/wallet-connect-button.tsx`).
-- **`WalletStatusCard`** — presentational; title **WALLET**, no testnet badge.
-- Pay/Settings: full connect flow; Gate: compact banner only when wallet not ready.
-
-### Session-derived P2P role (replaces `useUserRole`)
-
-- **Deleted:** `src/hooks/use-user-role.ts`, `src/components/ui/neo-brutal-role-button.tsx`.
-- `TicketsP2PProvider` tracks `activeSession: { sessionId, role }`:
-  - `beginPaymentSession()` → `receiver`
-  - `joinPaymentSessionAsSender()` → `sender`
-- Event routing: `src/features/tickets/ticket-event-handler.ts` (pure reducer).
-
-### Payment session consolidation
-
-- `payment-session.ts`: `validateAndJoinSession`, `canFulfillPayment`, `sessionBootstrapEvents` via `startPaymentSession`, post-sale QR field clear, `SESSIONS_KEY` persistence.
-- `usePaymentFlow` hook — Pay tab state machine extracted from screen.
-
-### Gate receiver-first
-
-- Heading **GATE** only; always shows Create Ticket + Your Tickets + Attendees.
-- **`TicketOfferList`**: cover thumbnail, **VIEW** + **RECEIVE PAYMENT** per row.
-- **`PaymentQrModal`**: full-screen payment QR, expiry countdown, regenerate.
-
-### Pay scan-first
-
-- Large **SCAN QR CODE** button → camera on press.
-- No role gate; rejects ticket-offer QRs with clear error.
-- User strings scrubbed ("Payment sent", "USDT" — no Sepolia).
-
-### Ticket creation enhancements
-
-- **`expo-image-picker`** + `app.json` plugin for cover upload.
-- Duration selector (1h/2h/3h) on `TicketBuilderForm`.
-- **`meshipay-ticket-offer`** QR at creation (`buildTicketOfferQr`); stored as `ticketQrPayload`.
-- P2P `TICKET_TRANSFERRED` schema includes optional `imageUri`.
-
-### Metro stability fix
-
-- `metro.config.js`: blockList `plugins/nativehelper-lib/build/` — prevents Metro watcher crash (`ENOENT` on CMake `Progress` dirs during native rebuilds).
-
-### Design spec
-
-- `docs/superpowers/specs/2026-07-08-demo-ui-polish-design.md`
-
----
-
-## Key files (post polish)
+## Important source files
 
 | Area | Path |
-|------|------|
-| Loading UI | `src/components/ui/meshipay-dots-loader.tsx`, `meshipay-inline-loader.tsx`, `meshipay-loading-overlay.tsx` |
-| P2P + ticket store | `src/features/tickets/tickets-p2p-context.tsx` |
-| Session / fulfill | `src/features/tickets/payment-session.ts` |
-| Event reducer | `src/features/tickets/ticket-event-handler.ts` |
-| Pay flow hook | `src/hooks/use-payment-flow.ts` |
-| Wallet connect | `src/components/wallet/wallet-connect-button.tsx` |
-| Receive payment QR | `src/components/receiver/payment-qr-modal.tsx` |
-| QR render + payload | `src/components/tickets/qr-code-view.tsx`, `src/features/tickets/qr-payload.ts` |
-| Ticket image pick | `src/features/tickets/ticket-image.ts` |
+|---|---|
+| WDK configuration | `src/config/wdk.ts` |
+| WDK provider / lazy polyfills | `src/features/wdk/wdk-provider.native.tsx` |
+| Payment preflight and send | `src/features/tickets/payment-send.ts` |
+| USDT asset, balance, fee helpers | `src/features/tickets/payment-helpers.ts` |
+| Sender state machine | `src/hooks/use-payment-flow.ts` |
+| Payment QR parsing/encryption | `src/features/tickets/qr-payload.ts`, `qr-crypto.ts` |
+| Local ticket mint/proof | `src/features/tickets/ticket-mint.ts`, `ticket-proof.ts` |
+| Receiver chain watcher | `src/features/tickets/chain-payment-watcher.ts`, `src/hooks/use-receiver-chain-watcher.ts` |
+| Local ticket/session storage | `src/features/tickets/tickets-context.tsx`, `ticket-storage.ts` |
 
----
+## Verification and release
 
-## Architecture invariants
+- `npm run verify` passed on 2026-07-12: Expo lint, TypeScript, and **40 Vitest tests**.
+- Tests cover payment preflight/send, a 20 USD₮ ticket with a 0.25 USD₮ fee, QR validation/encryption, payment sessions, and wallet utilities.
+- WDK bundle regenerated successfully on 2026-07-12.
+- Standalone release APK built successfully on 2026-07-12 18:15 IST:
+  - `android/app/build/outputs/apk/release/app-release.apk`
+  - 163 MB
+  - SHA-256: `902cc1b9613e9c37889a1d24f0e837bd29687a44df8655ac580082832a96cd3c`
+  - `unzip -t` passed.
 
-- Money = WDK on-chain; tickets = Hyperswarm P2P messages; no Meshipay backend.
-- Payment QR = `meshipay-ticket-session` slim bootstrap (15 min TTL); display fields from P2P `SESSION_CREATED`.
-- Offer QR = `meshipay-ticket-offer` (display at creation, not scannable for pay).
-- Shared state: `TicketsP2PProvider` in `src/app/_layout.tsx`.
+## Commands
 
----
+```bash
+npm run verify
+npm start
+npm run android:device
+npm run android:recover
+npm run android:standalone-apk
+```
 
-## Commands cheat sheet
+`android:standalone-apk` creates the shareable APK with the JavaScript bundle embedded; it does not need Metro after installation. Use `android:recover` only after native, plugin, or app-config changes.
 
-| Task | Command |
-|------|---------|
-| Verify codebase | `npm run verify` |
-| Metro dev (Terminal 1) | `source scripts/android-env.sh && export REACT_NATIVE_PACKAGER_HOSTNAME=localhost && adb reverse tcp:8081 tcp:8081 && npm start` |
-| USB dev install | `npm run android:device` |
-| After native/plugin change | `npm run android:recover` |
-| Standalone release APK | `npm run generate:wdk && npm run pack:p2p && npm run build:bare-kit && npx expo prebuild --clean --platform android && cd android && ./gradlew assembleRelease` → `android/app/build/outputs/apk/release/app-release.apk` |
+## Physical-device verification still required
 
-**Two-device demo:** Gate → Connect wallet → Create ticket → Receive Payment QR. Pay → Connect wallet → Scan → pay → ticket in Tickets; attendee on Gate.
+The build and automated checks are complete, but the final external proof must happen on two real phones:
+
+1. Fund sender with more than `20 USD₮ + displayed WDK fee` from the Candide Sepolia faucet.
+2. Receiver opens a 20 USD₮ payment QR.
+3. Sender scans, reviews the exact fee, approves, and receives a local ticket with the real transaction hash.
+4. Receiver waits for the Sepolia `Transfer` log and confirms the attendee appears.
+
+Do not describe the app as “100% offline USDT.” QR transfer and local ticket storage are device-local; blockchain settlement and receiver verification require internet.

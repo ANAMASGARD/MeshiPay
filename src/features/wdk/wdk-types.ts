@@ -28,6 +28,7 @@ export class BaseAsset {
   name: string;
   decimals: number;
   isNative?: boolean;
+  address?: string;
 
   constructor(props: Record<string, unknown>) {
     this.id = String(props.id ?? '');
@@ -36,19 +37,41 @@ export class BaseAsset {
     this.name = String(props.name ?? '');
     this.decimals = Number(props.decimals ?? 0);
     this.isNative = props.isNative as boolean | undefined;
+    this.address = props.address as string | undefined;
+  }
+
+  getId(): string {
+    return this.id;
+  }
+
+  getDecimals(): number {
+    return this.decimals;
+  }
+
+  getContractAddress(): string | null {
+    return this.address ?? null;
   }
 }
 
 export type TransactionResult = {
   success: boolean;
-  hash: string;
-  fee: string;
+  hash?: string;
+  fee?: string;
+  error?: string;
+};
+
+export type BalanceRow = {
+  success: boolean;
+  assetId: string;
+  balance: string | null;
   error?: string;
 };
 
 export type UseAccountReturn = {
   address: string | null | undefined;
   send: (params: TransactionParams) => Promise<TransactionResult>;
+  getBalance?: (tokens: BaseAsset[]) => Promise<BalanceRow[]>;
+  estimateFee?: (params: TransactionParams) => Promise<TransactionResult>;
 };
 
 export type WalletManagerReturn = {

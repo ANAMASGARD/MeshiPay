@@ -1,5 +1,7 @@
 import type { WdkAppState } from '@/features/wdk/wdk-types';
 
+const EVM_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
 export function useWalletStatusLabel(
   status: WdkAppState['status'],
   unavailableMessage?: string | null,
@@ -24,4 +26,12 @@ export function shortWalletAddress(address: string | null | undefined): string {
     return '';
   }
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+export function normalizeEvmAddress(value: string): string {
+  return value.trim().replace(/\s+/g, '');
+}
+
+export function isValidEvmAddress(value: string): boolean {
+  return EVM_ADDRESS_RE.test(normalizeEvmAddress(value));
 }

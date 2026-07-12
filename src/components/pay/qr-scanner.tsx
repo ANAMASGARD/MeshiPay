@@ -13,6 +13,7 @@ type QrScannerProps = {
 export function QrScanner({ onScan, onClose }: QrScannerProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   const handleBarcode = useCallback(
     ({ data }: { data: string }) => {
@@ -20,7 +21,7 @@ export function QrScanner({ onScan, onClose }: QrScannerProps) {
         return;
       }
       setScanned(true);
-      onScan(data);
+      onScan(data.trim());
     },
     [onScan, scanned],
   );
@@ -52,12 +53,19 @@ export function QrScanner({ onScan, onClose }: QrScannerProps) {
       <CameraView
         style={styles.camera}
         facing="back"
+        enableTorch={torchOn}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={scanned ? undefined : handleBarcode}
       />
       <View style={styles.overlay}>
         <View style={styles.frame} />
-        <Text style={styles.hint}>Align receiver QR inside the frame</Text>
+        <Text style={styles.hint}>Align payment QR inside the frame</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setTorchOn((value) => !value)}
+          style={styles.torchBtn}>
+          <Text style={styles.closeText}>{torchOn ? 'TORCH OFF' : 'TORCH ON'}</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeBtn}>
           <Text style={styles.closeText}>CLOSE</Text>
         </Pressable>
@@ -131,6 +139,14 @@ const styles = StyleSheet.create({
     color: MeshipayBrand.muted,
     fontSize: 14,
     fontWeight: '800',
+  },
+  torchBtn: {
+    borderWidth: 2,
+    borderColor: MeshipayBrand.primary,
+    borderRadius: 10,
+    backgroundColor: MeshipayBrand.backgroundElevated,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
   },
   closeBtn: {
     borderWidth: 2,

@@ -5,7 +5,7 @@ import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { TicketsP2PProvider } from '@/features/tickets/tickets-p2p-context';
+import { TicketsProvider } from '@/features/tickets/tickets-context';
 import { MeshipayWdkProvider } from '@/features/wdk/wdk-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,7 +29,6 @@ function AppShell() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="create-ticket" />
         <Stack.Screen name="ticket-preview/[ticketId]" />
-        <Stack.Screen name="pools" />
         <Stack.Screen name="explore" />
       </Stack>
     </ThemeProvider>
@@ -39,9 +38,9 @@ function AppShell() {
 export default function RootLayout() {
   return (
     <MeshipayWdkProvider>
-      <TicketsP2PProvider>
+      <TicketsProvider>
         <AppShell />
-      </TicketsP2PProvider>
+      </TicketsProvider>
     </MeshipayWdkProvider>
   );
 }

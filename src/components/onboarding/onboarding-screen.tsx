@@ -10,8 +10,8 @@ import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { MeshipayBrand, NeoBrutalShadow } from '@/constants/meshipay-brand';
 
 const BODY_LINES = [
-  'Decentralized P2P Football',
-  'Tickets & Local Payments.',
+  'WDK Football Payments',
+  'Tickets & Gate Entry.',
   'No central servers.',
   'Your keys, your tickets.',
 ] as const;

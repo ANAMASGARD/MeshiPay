@@ -8,25 +8,26 @@ Human overview and demo script: [README.md](./README.md).
 
 ## Mission
 
-Build a **real-world fan payment + ticket app** where:
+Build a **real-world fan payment + ticket gateway** where:
 
 - **No Meshipay backend** stores who paid whom or holds ticket inventory.
 - **WDK (Tether)** moves **USDT** on-chain — self-custodial wallet, user holds keys.
-- **Pears Stack (Hyperswarm P2P)** moves **session + ticket data** encrypted, directly **device ↔ device**.
+- **Payment QR** embeds the full hash-verified ticket envelope (event, gate, seat, check-in code, price, receiver address).
 - **All tickets and receipts** are stored **locally on each phone**.
 
-**Hackathon tracks:** **WDK** (payments) + **Pears Stack** (P2P). Theme: football — stadium gates, watch parties, local club matches, community tournaments.
+**Hackathon track (semifinal):** **WDK** — self-custodial USDT payments + QR-bootstrap ticketing. Theme: football — stadium gates, watch parties, local club matches.
 
 ### Value proposition
 
 | Layer | Job |
 |-------|-----|
-| **WDK** | Sender pays USDT to receiver’s wallet address |
-| **Pear P2P / Hyperswarm** | Pair phones, sync payment intent, transfer ticket payload, receipts — no central server |
-| **QR** | Bootstrap only — encodes session topic + receiver wallet + event metadata (replaces manual topic paste) |
-| **Local storage** | Sender’s **Tickets** drawer; receiver’s **Attendees / issued tickets** list |
+| **WDK** | Fan pays USDT to gatekeeper wallet on Sepolia |
+| **Payment QR** | Hash-verified ticket envelope — fan scans before pay |
+| **Local mint** | After WDK `send()`, fan phone saves ticket from QR + `txHash` |
+| **Chain watcher** | Receiver phone detects USDT transfer → Attendees list |
+| **Local storage** | Fan **Tickets** tab; gatekeeper **Attendees** list |
 
-**Do not claim** “100% offline USDT.” Internet is needed for chain settlement and Hyperswarm discovery. **Do claim** “decentralized P2P tickets + self-custodial USDT — no vendor database.”
+**Do not claim** “100% offline USDT.” Internet is needed for chain settlement. **Do claim** “WDK self-custodial USDT + QR-bootstrap tickets — no vendor database.”
 
 ---
 
@@ -36,24 +37,21 @@ Build a **real-world fan payment + ticket app** where:
 
 1. **Onboarding** (`src/app/index.tsx`) — shown every open until WDK wallet is `READY` (unlocked). Matches `Onboarding-Screen.png` layout; mascot from `onboarding-mascot-crop.png`. GET STARTED → `/home`.
 2. User **creates/unlocks WDK wallet** (Sepolia testnet for demo) on `/home`.
-3. User picks role: **Receiver** or **Sender** (planned).
+3. The same install acts as a **Receiver** when it creates a payment QR, or as a **Sender** when it scans one. There is no persistent role picker and no P2P dependency.
 
 ### Receiver (gatekeeper)
 
-1. Creates a **session** (generates Hyperswarm `topic` + local ticket offer).
-2. Shows **QR code** on screen (encodes `topic`, receiver wallet address, event name, price).
-3. Waits for sender to scan and connect (`peerCount` → 1).
-4. After WDK payment confirms, **broadcasts ticket** over P2P to sender.
-5. **Attendees screen:** local list of people who received tickets (name/address, amount, ticket count, timestamp). Data from P2P events + local reducer — not from a server.
+1. Creates a **ticket** (event, gate, price, check-in code).
+2. Taps **Receive Payment** — QR encodes full hash-verified ticket envelope + receiver wallet.
+3. Watches Sepolia for incoming USDT (`useReceiverChainWatcher`).
+4. **Attendees screen:** local list after on-chain payment detected.
 
-### Sender (payer)
+### Sender (fan/payer)
 
-1. Taps **Scan** → camera opens → scans receiver QR.
-2. App joins same Hyperswarm **topic** → “Connected” UI.
-3. Enters **amount** (e.g. $10 USDT) + **app PIN** (local UX; unlock/confirm payment).
-4. **WDK `send()`** pays receiver on-chain.
-5. Receives **ticket over P2P** (encrypted swarm channel).
-6. **Tickets** tab (bottom nav or **hamburger / drawer** menu) shows owned tickets locally.
+1. Taps **Scan** → camera opens → scans gate **payment QR** (not ticket display QR).
+2. Confirms event details and price from QR envelope.
+3. **WDK `send()`** pays USDT on Sepolia.
+4. **Ticket minted locally** from QR + `txHash` → **Tickets** tab.
 
 ### Optional polish (post-MVP)
 
@@ -62,45 +60,19 @@ Build a **real-world fan payment + ticket app** where:
 
 ---
 
-## Dual-track architecture
+## Architecture
 
 ```
 Football UI (Expo Router)
-├── WdkAppProvider → .wdk-bundle → HRPC → WDK worklet → Sepolia USDT (payments)
-└── p2p-room.ts → bare-ipc → p2p-worklet.bundle.js → Hyperswarm topic (tickets/session)
+├── MeshipayWdkProvider → .wdk-bundle → HRPC → WDK worklet → Sepolia USDT (payments)
+└── TicketsProvider → payment session + chain watcher + AsyncStorage (tickets/attendees)
 ```
 
 **Split of responsibility (invariants for agents):**
 
-- **Never** send ticket files through WDK — tickets are P2P messages.
-- **Never** use a custom backend for ticket sync — use Hyperswarm broadcast + local storage.
-- **Always** validate P2P payloads with zod at the IPC boundary (extend `TipPoolEvent` → payment/ticket events).
-
-### Planned P2P event types (evolve from current `TipPoolEvent`)
-
-| Event | Purpose |
-|-------|---------|
-| `SESSION_CREATED` | Receiver opens gate; includes event label, price, ticket stock |
-| `PAYMENT_REQUESTED` | Sender announces amount + sender address |
-| `PAYMENT_ACK` | Receiver acknowledges on-chain tx hash |
-| `TICKET_TRANSFERRED` | Ticket payload (count, seat/gate, event id) to sender |
-| `RECEIPT` | Both sides store matching receipt locally |
-
-Current MVP still uses pool events in `src/features/pools/` — refactor toward the above without breaking WDK/P2P worklets.
-
-### QR payload (bootstrap)
-
-```json
-{
-  "v": 1,
-  "topic": "meshipay-session-<id>",
-  "receiverAddress": "0x…",
-  "eventLabel": "Club Gate A",
-  "priceUsdt": "10.00"
-}
-```
-
-Scan → `joinRoom(topic)` → encrypted P2P session (see `src/services/p2p/p2p-room.native.ts`).
+- **Never** send ticket inventory through a Meshipay backend — local storage only.
+- **Money = WDK** on-chain USDT; **ticket delivery = QR envelope + local mint** after payment.
+- **Receiver fulfillment** = Sepolia `Transfer` log polling (`chain-payment-watcher.ts`).
 
 ---
 
@@ -188,11 +160,11 @@ Load Archivo Black + Space Grotesk via `expo-font` in `_layout.tsx` when adding 
 | Route / area | Content | Status |
 |--------------|---------|--------|
 | `index` (`/`) | Onboarding — wallet gate until `READY` | **Done** |
-| `home` | Wallet create/unlock WDK | Stub — restyle to FIFA mock |
-| Receiver | QR display + attendee list | Planned |
-| Sender | Scan → amount → PIN → pay | Planned |
-| **Tickets** (drawer / bottom nav) | Sender’s locally stored tickets | Planned |
-| Settings | Profile, security, P2P status, logout | Planned |
+| `home` | Wallet create/unlock WDK | Done |
+| Gate | Receiver QR display + local attendee list | Done — Sepolia USDT watcher |
+| Pay | Sender scan → WDK fee quote → approve → pay | Done |
+| **Tickets** (bottom nav) | Sender’s locally stored, QR-verifiable tickets | Done |
+| Settings | Wallet address, balance, security, logout | Done |
 
 **Onboarding gate (implemented):** `src/app/index.tsx` shows `OnboardingScreen` until `useWdkApp().state.status === 'READY'`. GET STARTED → `/home` for wallet setup. No AsyncStorage “seen onboarding” flag.
 
@@ -234,8 +206,7 @@ Agents: preserve working WDK + P2P native stack when restyling screens.
 5. Pin WDK transitive Expo modules via `package.json` `overrides`: `expo-crypto` ~15.x, `expo-local-authentication` ~17.x
 6. Lazy-load `react-native-get-random-values` in `_layout.tsx` `useEffect` — never before `expo-router/entry`
 7. Do not revert Android native fixes (see table below)
-8. Pears track: networking via **Hyperswarm** in P2P worklet — not plain WebRTC alone
-9. WDK track: real **USDT send** via WDK — not mock “paid” UI
+8. WDK track: real **USDT send** via WDK — not mock “paid” UI
 
 ---
 
@@ -247,9 +218,10 @@ Pick one path — `scripts/run-android.sh` already handles `adb reverse`, `REACT
 |--------------|---------|-------|
 | JS/TS only | `npm start` | Open **meshipay** dev client → shake → Reload |
 | First clone / fresh device install | `npm install --legacy-peer-deps` then `npm run android:device` | Generates bundles if missing; builds + installs APK |
-| Native plugin, `app.json`, or stale native/JS | `npm run android:recover` | Regenerates WDK/P2P bundles, rebuilds bare-kit, clean prebuild, reinstall |
+| Native plugin, `app.json`, or stale native/JS | `npm run android:recover` | Regenerates WDK bundle, rebuilds bare-kit, clean prebuild, reinstall |
 | App icon / splash (`app.json` icon fields) | `npm run android:recover` | Icons are native — prebuild + reinstall required |
 | APK already built, native unchanged | `cd android && ./gradlew :app:installDebug` | Fast reinstall only |
+| Shareable standalone release APK | `npm run android:standalone-apk` | Regenerates WDK bundle and writes `android/app/build/outputs/apk/release/app-release.apk`; no Metro required |
 
 Before any Android run: `source scripts/android-env.sh`. Optional: `export ANDROID_SERIAL=<device-id>` when multiple devices are connected.
 
@@ -267,7 +239,6 @@ npm start
 ```bash
 npm install --legacy-peer-deps
 npm run generate:wdk
-npm run pack:p2p
 ```
 
 **Only when nativehelper sources change** (not part of `android:recover`):
@@ -308,7 +279,7 @@ After `npm install`, postinstall re-applies the bare-kit patch. Re-run `npm run 
 ## Verification
 
 ```bash
-npm run verify   # lint + typecheck (src only; CMake build dirs excluded)
+npm run verify   # Expo lint + TypeScript + Vitest (40 tests as of 2026-07-12)
 ```
 
 ---
@@ -320,16 +291,35 @@ npm run verify   # lint + typecheck (src only; CMake build dirs excluded)
 - Keep README.md for humans; keep this file as the **product mission + agent runbook**
 - Read `docs/memory.md` at session start for recent UI/native changes and verification status
 - When adding UI, follow **§ Design pattern language** — tokens from `meshipay-brand.ts`, `NeoBrutalButton`, code-built screens (not full mock PNG backgrounds)
-- When adding features, preserve WDK/P2P split: **money = WDK, tickets = Hyperswarm P2P**
-- Run `npm run verify` before finishing; no unit tests exist yet
+- When adding features, preserve WDK gateway split: **money = WDK on-chain; tickets = QR envelope + local mint**
+- Run `npm run verify` before finishing; payment, QR, crypto, and wallet utility tests are in Vitest
 - Demo must work on **two physical devices**: receiver QR → sender scan → pay → ticket on sender, attendee on receiver
 
 ---
 
 ## Demo script (3 min, two phones)
 
-1. **Phone A (Receiver):** unlock wallet → Receiver mode → QR visible.
-2. **Phone B (Sender):** unlock wallet → Scan QR → Connected (1 peer).
-3. **Sender:** enter $10 → PIN → WDK pay.
-4. **Both:** ticket event over P2P; sender sees **Tickets**; receiver sees **Attendees** list.
-5. Mention: no central server; Sepolia testnet USDT; Hyperswarm encrypted channel.
+1. **Phone A (Receiver):** unlock wallet → Gate → create a 20 USD₮ ticket → Receive Payment QR.
+2. **Phone B (Sender):** unlock wallet → Pay → Scan the payment QR → verify ticket and WDK fee quote.
+3. **Sender:** confirms device PIN/biometric → WDK sends real Sepolia mock USD₮.
+4. **Both:** fan sees **Tickets**; gatekeeper sees **Attendees** after chain verification.
+5. Mention: no central server; Sepolia testnet mock USD₮; ticket data is encrypted in the payment QR and minted locally only after a transaction hash.
+
+### Demo wallet funding (gasless USDT)
+
+1. **Settings → COPY ADDRESS** on the **sender** phone (full `0x…`, 42 chars, no spaces).
+2. Open **Candide faucet:** https://dashboard.candide.dev/faucet — sign in with Google/GitHub → Sepolia → mint mock **USD₮** to that address.
+   Alternate: https://dashboard.pimlico.io/test-erc20-faucet
+3. Wait ~30–60s for the mint tx to confirm.
+4. Sender needs **ticket price + the displayed WDK network fee** in that Sepolia USD₮ — for a 20 USD₮ ticket, fund more than 20 USD₮. **No Sepolia ETH is required** (ERC-4337 paymaster token mode).
+5. If paymaster is unreachable, retry; ETH faucet is optional fallback only.
+
+Token Meshipay watches/pays with: `0xd077a400968890eacc75cdc901f0356c943e4fdb` (Candide/WDK Sepolia mock USDT).
+
+### Current payment reliability state (2026-07-12)
+
+- WDK fee mode is Candide ERC-4337 paymaster-token mode on Sepolia.
+- `SEPOLIA_DEMO_TRANSFER_MAX_FEE_ATOMIC` is `20_000_000` (20 test USD₮) in `src/config/wdk.ts`. This testnet-only ceiling is enforced by WDK and Meshipay preflight; never present it as a production setting.
+- Sender confirmation reads a real `quoteTransfer()` fee first. Meshipay rejects a fee `>= transferMaxFee`, matching WDK exactly, then sends only through `useAccount().send()`.
+- A local sender ticket is minted only after `success === true` and a real `txHash` are returned. The receiver independently polls the mock USDT `Transfer` log from the QR session start block and writes a local attendee record.
+- A current standalone APK was built successfully with `npm run android:standalone-apk` at 2026-07-12 18:15 IST: `android/app/build/outputs/apk/release/app-release.apk`, SHA-256 `902cc1b9613e9c37889a1d24f0e837bd29687a44df8655ac580082832a96cd3c`.

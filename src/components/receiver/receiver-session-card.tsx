@@ -8,14 +8,12 @@ import type { TicketRecord } from '@/features/tickets/ticket-types';
 type ReceiverSessionCardProps = {
   ticket: TicketRecord;
   qrPayload: string;
-  peerCount: number;
   sessionId: string;
 };
 
 export function ReceiverSessionCard({
   ticket,
   qrPayload,
-  peerCount,
   sessionId,
 }: ReceiverSessionCardProps) {
   return (
@@ -23,11 +21,9 @@ export function ReceiverSessionCard({
       <View style={styles.shadow} />
       <View style={styles.card}>
         <Text style={styles.heading}>SCAN TO PAY</Text>
-        <Text style={styles.peer}>
-          {peerCount > 0 ? `${peerCount} peer connected` : 'Waiting for sender scan...'}
-        </Text>
+        <Text style={styles.status}>Watching Sepolia for USDT payment…</Text>
         <View style={styles.qrFrame}>
-          <QrCodeView value={qrPayload} size={220} />
+          <QrCodeView value={qrPayload} size={320} />
         </View>
         <TicketPreviewCard ticket={ticket} compact />
         <Text style={styles.session}>Session {sessionId.slice(0, 12)}...</Text>
@@ -62,10 +58,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1.2,
   },
-  peer: {
+  status: {
     color: MeshipayBrand.muted,
     fontSize: 13,
     fontWeight: '700',
+    textAlign: 'center',
   },
   qrFrame: {
     borderWidth: 3,

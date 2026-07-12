@@ -11,7 +11,7 @@ import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { getTicketById } from '@/features/tickets/ticket-storage';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
-import { useTicketsP2P } from '@/features/tickets/tickets-p2p-context';
+import { useTickets } from '@/features/tickets/tickets-context';
 import { useAccount, useWdkApp } from '@/features/wdk/wdk-hooks';
 
 export default function TicketPreviewScreen() {
@@ -19,7 +19,7 @@ export default function TicketPreviewScreen() {
   const { ticketId } = useLocalSearchParams<{ ticketId: string }>();
   const { state } = useWdkApp();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
-  const p2p = useTicketsP2P();
+  const tickets = useTickets();
 
   const [ticket, setTicket] = useState<TicketRecord | null>(null);
   const [priceDraft, setPriceDraft] = useState('');
@@ -50,11 +50,11 @@ export default function TicketPreviewScreen() {
     if (!ticketId) {
       return;
     }
-    const updated = p2p.tickets.find((item) => item.ticketId === ticketId);
+    const updated = tickets.tickets.find((item) => item.ticketId === ticketId);
     if (updated) {
       setTicket(updated);
     }
-  }, [p2p.tickets, ticketId]);
+  }, [tickets.tickets, ticketId]);
 
   const handleReceivePayment = useCallback(() => {
     if (!walletReady || !address || !ticket) {

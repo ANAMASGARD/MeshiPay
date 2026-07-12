@@ -1,26 +1,20 @@
 import * as Crypto from 'expo-crypto';
 import { z } from 'zod';
 
-import type { TicketEvent } from '@/features/tickets/ticket-events';
+import { decryptJson, encryptJson, normalizeReceiverAddress } from '@/features/tickets/qr-crypto';
 import type { TicketRecord } from '@/features/tickets/ticket-types';
 
 const currencyLiteral = z.literal('USDT_SEPOLIA');
+const PAYMENT_ENCRYPTED_KIND = 'meshipay-ticket-session-encrypted' as const;
 
-/** Minimal bootstrap fields encoded in payment QR (slim v1). */
-export const qrPayloadSlimSchema = z.object({
+/** Full payment QR payload — ticket envelope for local mint after WDK pay. */
+export const qrPayloadEnvelopeSchema = z.object({
   v: z.literal(1),
   kind: z.literal('meshipay-ticket-session'),
   sessionId: z.string().min(1),
-  topic: z.string().min(1),
   receiverAddress: z.string().min(1),
   ticketId: z.string().min(1),
   priceUsdt: z.string().min(1),
-  expiresAt: z.number(),
-  payloadHash: z.string().min(1),
-});
-
-/** Display fields — in QR for legacy payloads; hydrated from P2P for slim QRs. */
-export const qrPayloadDisplaySchema = z.object({
   eventName: z.string().min(1),
   homeTeam: z.string().min(1),
   awayTeam: z.string().min(1),
@@ -30,10 +24,11 @@ export const qrPayloadDisplaySchema = z.object({
   startAt: z.string().min(1),
   endAt: z.string().min(1),
   currency: currencyLiteral,
+  checkInCode: z.string().min(1),
+  expiresAt: z.number(),
+  payloadHash: z.string().min(1),
+  imageUri: z.string().optional(),
 });
-
-/** Legacy full QR payload (backward compatible). */
-export const qrPayloadFullSchema = qrPayloadSlimSchema.merge(qrPayloadDisplaySchema);
 
 export const ticketOfferQrSchema = z.object({
   v: z.literal(1),
@@ -54,17 +49,181 @@ export const ticketOfferQrSchema = z.object({
   payloadHash: z.string().min(1),
 });
 
-export type QrPayloadSlim = z.infer<typeof qrPayloadSlimSchema>;
-export type QrPayloadDisplay = z.infer<typeof qrPayloadDisplaySchema>;
-export type QrPayloadFull = z.infer<typeof qrPayloadFullSchema>;
-export type QrPayload = QrPayloadSlim & Partial<QrPayloadDisplay>;
+export const encryptedPaymentShellSchema = z.object({
+  v: z.literal(2),
+  kind: z.literal(PAYMENT_ENCRYPTED_KIND),
+  sessionId: z.string().min(1),
+  receiverAddress: z.string().min(1),
+  expiresAt: z.number(),
+  nonce: z.string().min(1),
+  ciphertext: z.string().min(1),
+});
+
+export type QrPayloadEnvelope = z.infer<typeof qrPayloadEnvelopeSchema>;
+export type QrPayload = QrPayloadEnvelope;
 export type TicketOfferQr = z.infer<typeof ticketOfferQrSchema>;
+export type EncryptedPaymentShell = z.infer<typeof encryptedPaymentShellSchema>;
 
-/** @deprecated Use qrPayloadFullSchema — kept for existing imports. */
-export const qrPayloadSchema = qrPayloadFullSchema;
+/** @deprecated Use qrPayloadEnvelopeSchema */
+export const qrPayloadSchema = qrPayloadEnvelopeSchema;
 
-function makeTopic(sessionId: string): string {
-  return `meshipay-session-${sessionId}`;
+/** Stable field order for QR hashing — never include imageUri (too large / inconsistent). */
+const QR_HASH_FIELD_ORDER = [
+  'v',
+  'kind',
+  'sessionId',
+  'receiverAddress',
+  'ticketId',
+  'priceUsdt',
+  'eventName',
+  'homeTeam',
+  'awayTeam',
+  'venue',
+  'gate',
+  'seatLabel',
+  'startAt',
+  'endAt',
+  'currency',
+  'checkInCode',
+  'expiresAt',
+] as const;
+
+function buildPaymentShellAad(shell: EncryptedPaymentShell): Record<string, unknown> {
+  return {
+    v: shell.v,
+    kind: shell.kind,
+    sessionId: shell.sessionId,
+    receiverAddress: normalizeReceiverAddress(shell.receiverAddress),
+    expiresAt: shell.expiresAt,
+  };
+}
+
+function pickHashFields(source: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of QR_HASH_FIELD_ORDER) {
+    const value = source[key];
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+    if (key === 'receiverAddress' && typeof value === 'string') {
+      out[key] = normalizeReceiverAddress(value);
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+async function hashPayloadFields(source: Record<string, unknown>): Promise<string> {
+  return hashCanonical(pickHashFields(source));
+}
+
+export function serializeQrPayload(payload: QrPayloadEnvelope): string {
+  const { payloadHash, ...body } = payload;
+  const ordered = pickHashFields(body as Record<string, unknown>);
+  return JSON.stringify({ ...ordered, payloadHash });
+}
+
+/** Receiver-facing payment QR — ciphertext hides ticket envelope until fan decrypts locally. */
+export async function buildEncryptedPaymentQrString(envelope: QrPayloadEnvelope): Promise<string> {
+  const shellBase = {
+    v: 2 as const,
+    kind: PAYMENT_ENCRYPTED_KIND,
+    sessionId: envelope.sessionId,
+    receiverAddress: envelope.receiverAddress,
+    expiresAt: envelope.expiresAt,
+  };
+
+  const encrypted = await encryptJson({
+    sessionId: envelope.sessionId,
+    receiverAddress: envelope.receiverAddress,
+    purpose: 'payment',
+    plaintext: envelope,
+    aad: shellBase,
+  });
+
+  const shell: EncryptedPaymentShell = {
+    ...shellBase,
+    nonce: encrypted.nonce,
+    ciphertext: encrypted.ciphertext,
+  };
+
+  return JSON.stringify(shell);
+}
+
+export function isEncryptedPaymentShell(raw: unknown): raw is EncryptedPaymentShell {
+  return encryptedPaymentShellSchema.safeParse(raw).success;
+}
+
+export function parseEncryptedPaymentShell(raw: string): EncryptedPaymentShell | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const result = encryptedPaymentShellSchema.safeParse(parsed);
+    if (!result.success) {
+      return null;
+    }
+    return {
+      ...result.data,
+      receiverAddress: normalizeReceiverAddress(result.data.receiverAddress),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function decryptPaymentShell(shell: EncryptedPaymentShell): QrPayloadEnvelope | null {
+  const decrypted = decryptJson<Record<string, unknown>>({
+    sessionId: shell.sessionId,
+    receiverAddress: shell.receiverAddress,
+    purpose: 'payment',
+    nonce: shell.nonce,
+    ciphertext: shell.ciphertext,
+    aad: buildPaymentShellAad(shell),
+  });
+
+  if (!decrypted) {
+    return null;
+  }
+
+  const envelope = qrPayloadEnvelopeSchema.safeParse(decrypted);
+  if (!envelope.success) {
+    return null;
+  }
+
+  return {
+    ...envelope.data,
+    receiverAddress: normalizeReceiverAddress(envelope.data.receiverAddress),
+  };
+}
+
+/** Decrypt v2 payment QR or fall back to legacy v1 plaintext envelope. */
+export async function parseAndDecryptPaymentQr(raw: string): Promise<QrPayloadEnvelope | null> {
+  const trimmed = raw.trim();
+  const shell = parseEncryptedPaymentShell(trimmed);
+  if (shell) {
+    const decrypted = decryptPaymentShell(shell);
+    if (!decrypted) {
+      return null;
+    }
+    if (decrypted.sessionId !== shell.sessionId) {
+      return null;
+    }
+    if (normalizeReceiverAddress(decrypted.receiverAddress) !== shell.receiverAddress) {
+      return null;
+    }
+    if (decrypted.expiresAt !== shell.expiresAt) {
+      return null;
+    }
+    const validHash = await verifyQrPayload(decrypted);
+    return validHash ? decrypted : null;
+  }
+
+  const legacy = parseQrPayload(trimmed);
+  if (!legacy) {
+    return null;
+  }
+  const validHash = await verifyQrPayload(legacy);
+  return validHash ? legacy : null;
 }
 
 async function hashCanonical(payload: Record<string, unknown>): Promise<string> {
@@ -72,8 +231,9 @@ async function hashCanonical(payload: Record<string, unknown>): Promise<string> 
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, canonical);
 }
 
-export function isQrPayloadHydrated(payload: QrPayload): payload is QrPayloadFull {
+export function hasTicketEnvelope(payload: QrPayload): payload is QrPayloadEnvelope {
   return (
+    typeof payload.checkInCode === 'string' &&
     typeof payload.eventName === 'string' &&
     typeof payload.homeTeam === 'string' &&
     typeof payload.awayTeam === 'string' &&
@@ -86,32 +246,34 @@ export function isQrPayloadHydrated(payload: QrPayload): payload is QrPayloadFul
   );
 }
 
-export function mergeQrPayloadDisplay(
-  payload: QrPayload,
-  display: QrPayloadDisplay,
-): QrPayloadFull {
-  return { ...payload, ...display };
-}
-
 export async function buildQrPayload(params: {
   sessionId: string;
   ticket: TicketRecord;
   receiverAddress: string;
   expiresAt: number;
-}): Promise<QrPayloadSlim> {
-  const topic = makeTopic(params.sessionId);
-  const base = {
-    v: 1 as const,
-    kind: 'meshipay-ticket-session' as const,
+}): Promise<QrPayloadEnvelope> {
+  const body: Record<string, unknown> = {
+    v: 1,
+    kind: 'meshipay-ticket-session',
     sessionId: params.sessionId,
-    topic,
-    receiverAddress: params.receiverAddress,
+    receiverAddress: normalizeReceiverAddress(params.receiverAddress),
     ticketId: params.ticket.ticketId,
     priceUsdt: params.ticket.priceUsdt,
+    eventName: params.ticket.eventName,
+    homeTeam: params.ticket.homeTeam,
+    awayTeam: params.ticket.awayTeam,
+    venue: params.ticket.venue,
+    gate: params.ticket.gate,
+    seatLabel: params.ticket.seatLabel,
+    startAt: params.ticket.startAt,
+    endAt: params.ticket.endAt,
+    currency: 'USDT_SEPOLIA',
+    checkInCode: params.ticket.checkInCode,
     expiresAt: params.expiresAt,
   };
-  const payloadHash = await hashCanonical(base);
-  return { ...base, payloadHash };
+  const payloadHash = await hashPayloadFields(body);
+  const payload = { ...(body as Omit<QrPayloadEnvelope, 'payloadHash'>), payloadHash };
+  return payload;
 }
 
 export async function buildTicketOfferQr(params: {
@@ -142,22 +304,20 @@ export async function buildTicketOfferQr(params: {
 export function parseQrPayload(raw: string): QrPayload | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      (parsed as { kind?: string }).kind === 'meshipay-ticket-offer'
-    ) {
-      return null;
+    if (typeof parsed === 'object' && parsed !== null) {
+      const kind = (parsed as { kind?: string }).kind;
+      if (kind === 'meshipay-ticket-offer' || kind === PAYMENT_ENCRYPTED_KIND) {
+        return null;
+      }
     }
 
-    const full = qrPayloadFullSchema.safeParse(parsed);
-    if (full.success) {
-      return full.data;
-    }
-
-    const slim = qrPayloadSlimSchema.safeParse(parsed);
-    if (slim.success) {
-      return slim.data;
+    const envelope = qrPayloadEnvelopeSchema.safeParse(parsed);
+    if (envelope.success) {
+      const data = envelope.data;
+      return {
+        ...data,
+        receiverAddress: normalizeReceiverAddress(data.receiverAddress),
+      };
     }
 
     return null;
@@ -181,25 +341,18 @@ export function parseTicketOfferQr(raw: string): TicketOfferQr | null {
 
 export async function verifyQrPayload(payload: QrPayload): Promise<boolean> {
   const { payloadHash, ...rest } = payload;
+  const restRecord = rest as Record<string, unknown>;
 
-  const slimRest = {
-    v: rest.v,
-    kind: rest.kind,
-    sessionId: rest.sessionId,
-    topic: rest.topic,
-    receiverAddress: rest.receiverAddress,
-    ticketId: rest.ticketId,
-    priceUsdt: rest.priceUsdt,
-    expiresAt: rest.expiresAt,
-  };
-  const slimExpected = await hashCanonical(slimRest);
-  if (slimExpected === payloadHash) {
+  const canonicalExpected = await hashPayloadFields(restRecord);
+  if (canonicalExpected === payloadHash) {
     return true;
   }
 
-  if (isQrPayloadHydrated(payload)) {
-    const fullExpected = await hashCanonical(rest);
-    return fullExpected === payloadHash;
+  const legacyEnvelope = { ...restRecord };
+  delete legacyEnvelope.imageUri;
+  const envelopeExpected = await hashCanonical(legacyEnvelope);
+  if (envelopeExpected === payloadHash) {
+    return true;
   }
 
   return false;
@@ -219,20 +372,4 @@ export function createReceiptId(): string {
 
 export function createCheckInCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
-export function displayFromSessionCreated(
-  event: Extract<TicketEvent, { type: 'SESSION_CREATED' }>,
-): QrPayloadDisplay {
-  return {
-    eventName: event.eventName,
-    homeTeam: event.homeTeam,
-    awayTeam: event.awayTeam,
-    venue: event.venue,
-    gate: event.gate,
-    seatLabel: event.seatLabel,
-    startAt: event.startAt,
-    endAt: event.endAt,
-    currency: 'USDT_SEPOLIA',
-  };
 }
