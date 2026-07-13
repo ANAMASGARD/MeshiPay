@@ -10,13 +10,18 @@ import { MeshipayLoadingOverlay } from '@/components/ui/meshipay-loading-overlay
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { createTicketFromDraft, createTicketFromDraftWithQr, upsertTicket } from '@/features/tickets/ticket-storage';
+import { getPublishedMatchFromTransaction, isMatchRegistryConfigured, publishMatch, type EvmAccountExtension } from '@/features/matches/registry';
 import type { TicketDraftInput, TicketRecord } from '@/features/tickets/ticket-types';
 import { useAccount, useWdkApp } from '@/features/wdk/wdk-hooks';
 
 export default function CreateTicketScreen() {
   const router = useRouter();
   const { state } = useWdkApp();
-  const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
+  const account = useAccount({ network: 'ethereum', accountIndex: 0 }) as unknown as {
+    address: string | null;
+    extension: <T extends object>() => T;
+  };
+  const { address, extension } = account;
   const walletReady = state.status === 'READY' && !!address;
 
   const [preview, setPreview] = useState<TicketRecord | null>(null);
@@ -40,16 +45,25 @@ export default function CreateTicketScreen() {
         return;
       }
 
-      if (!draft.eventName.trim() || !draft.homeTeam.trim() || !draft.awayTeam.trim()) {
-        Alert.alert('Missing fields', 'Event name and both teams are required.');
+      if (!draft.eventName.trim() || !draft.homeTeam.trim() || !draft.awayTeam.trim() || !draft.location) {
+        Alert.alert('Missing fields', 'Event name, both teams, and an event map pin are required.');
+        return;
+      }
+      if (!isMatchRegistryConfigured()) {
+        Alert.alert('Registry needed', 'Add EXPO_PUBLIC_MATCH_REGISTRY_ADDRESS after deploying the Sepolia registry, then reload.');
         return;
       }
 
       setSaving(true);
       try {
+        const published = await publishMatch(extension<EvmAccountExtension>(), { ...draft, location: draft.location });
         const ticket = await createTicketFromDraftWithQr(draft, address);
+        ticket.registryTxHash = published.hash;
+        const onChain = await getPublishedMatchFromTransaction(published.hash, extension<EvmAccountExtension>());
+        ticket.matchId = onChain?.matchId;
+        ticket.matchSaleAddress = onChain?.saleAddress;
         await upsertTicket(ticket);
-        Alert.alert('Ticket created', 'Your ticket is ready.', [
+        Alert.alert('Ticket created', onChain ? 'Your match is live on Sepolia.' : 'Transaction submitted. The match will appear on the global map after Sepolia indexes it.', [
           {
             text: 'View ticket',
             onPress: () => router.replace(`/ticket-preview/${ticket.ticketId}`),
@@ -65,7 +79,7 @@ export default function CreateTicketScreen() {
         setSaving(false);
       }
     },
-    [address, router, walletReady],
+    [address, extension, router, walletReady],
   );
 
   return (

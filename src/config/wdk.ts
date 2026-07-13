@@ -27,6 +27,8 @@ export type EthereumNetworkConfig = {
  * It is still enforced by both WDK and Meshipay's balance preflight.
  */
 export const SEPOLIA_DEMO_TRANSFER_MAX_FEE_ATOMIC = 20_000_000;
+/** Testnet-only ceiling for ERC-4337 contract calls (approval + MatchSale.buy). */
+export const SEPOLIA_DEMO_TRANSACTION_MAX_FEE_ATOMIC = 20_000_000;
 
 export const wdkConfigs: MeshipayWdkConfigs = {
   networks: {
@@ -42,6 +44,7 @@ export const wdkConfigs: MeshipayWdkConfigs = {
         // "Unsupported safe modules version: undefined".
         safeModulesVersion: '0.3.0',
         transferMaxFee: SEPOLIA_DEMO_TRANSFER_MAX_FEE_ATOMIC,
+        transactionMaxFee: SEPOLIA_DEMO_TRANSACTION_MAX_FEE_ATOMIC,
         // Candide Sepolia mock USDT — same token as https://dashboard.candide.dev/faucet
         // (WDK docs). Do NOT use Aave Sepolia USDT here or faucet funds won't match paymaster.
         paymasterToken: {
@@ -84,6 +87,10 @@ export function getPaymasterTokenAddress(): string {
 
 export function getTransferMaxFeeAtomic(): bigint {
   return BigInt(getEthereumNetworkConfig().transferMaxFee);
+}
+
+export function getTransactionMaxFeeAtomic(): bigint {
+  return BigInt((wdkConfigs.networks.ethereum.config.transactionMaxFee as number) ?? 0);
 }
 
 export function getSepoliaRpcUrl(): string {

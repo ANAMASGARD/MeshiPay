@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { NeoBrutalButton } from '@/components/ui/neo-brutal-button';
+import { EventLocationPicker } from '@/components/tickets/event-location-picker';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { pickTicketImage } from '@/features/tickets/ticket-image';
 import type { TicketDraftInput } from '@/features/tickets/ticket-types';
@@ -18,7 +19,7 @@ const TEMPLATES: { label: string; draft: Partial<TicketDraftInput> }[] = [
       gate: '3A',
       seatLabel: 'General Admission',
       priceUsdt: '10.00',
-      quantity: 20,
+      quantity: 20, location: { latitude: 26.9124, longitude: 75.7873, label: 'Sawai Mansingh Stadium, Jaipur' },
     },
   },
   {
@@ -31,7 +32,7 @@ const TEMPLATES: { label: string; draft: Partial<TicketDraftInput> }[] = [
       gate: 'VIP',
       seatLabel: 'Lounge',
       priceUsdt: '5.00',
-      quantity: 50,
+      quantity: 50, location: { latitude: 28.6139, longitude: 77.209, label: 'Jawaharlal Nehru Stadium, New Delhi' },
     },
   },
   {
@@ -44,7 +45,70 @@ const TEMPLATES: { label: string; draft: Partial<TicketDraftInput> }[] = [
       gate: 'B2',
       seatLabel: 'Lower Bowl',
       priceUsdt: '25.00',
-      quantity: 10,
+      quantity: 10, location: { latitude: 19.0607, longitude: 72.8562, label: 'Wankhede Stadium, Mumbai' },
+    },
+  },
+  {
+    label: 'EDEN GARDENS',
+    draft: {
+      eventName: 'Kolkata Derby Night', homeTeam: 'Mohun Bagan', awayTeam: 'East Bengal', venue: 'Eden Gardens, Kolkata', gate: 'A1', seatLabel: 'Lower Bowl', priceUsdt: '15.00', quantity: 30,
+      location: { latitude: 22.5646, longitude: 88.3433, label: 'Eden Gardens, Kolkata' },
+    },
+  },
+  {
+    label: 'CHINNASWAMY',
+    draft: {
+      eventName: 'Bengaluru Night Football', homeTeam: 'Bengaluru FC', awayTeam: 'Kerala Blasters', venue: 'M Chinnaswamy Stadium, Bengaluru', gate: 'C2', seatLabel: 'East Stand', priceUsdt: '18.00', quantity: 40,
+      location: { latitude: 12.9788, longitude: 77.5996, label: 'M Chinnaswamy Stadium, Bengaluru' },
+    },
+  },
+  {
+    label: 'HYDERABAD FC',
+    draft: {
+      eventName: 'Deccan Football Fest', homeTeam: 'Hyderabad FC', awayTeam: 'Goa United', venue: 'GMC Balayogi Athletic Stadium, Hyderabad', gate: 'N1', seatLabel: 'General Admission', priceUsdt: '12.00', quantity: 35,
+      location: { latitude: 17.4103, longitude: 78.3436, label: 'GMC Balayogi Athletic Stadium, Hyderabad' },
+    },
+  },
+  {
+    label: 'KOCHI ARENA',
+    draft: {
+      eventName: 'Kerala Super Match', homeTeam: 'Kerala Blasters', awayTeam: 'Chennaiyin FC', venue: 'Jawaharlal Nehru Stadium, Kochi', gate: 'B4', seatLabel: 'North Stand', priceUsdt: '14.00', quantity: 45,
+      location: { latitude: 10.0498, longitude: 76.3627, label: 'Jawaharlal Nehru Stadium, Kochi' },
+    },
+  },
+  {
+    label: 'PUNE SHOWDOWN',
+    draft: {
+      eventName: 'Pune City Cup', homeTeam: 'Pune FC', awayTeam: 'Mumbai City', venue: 'Shree Shiv Chhatrapati Sports Complex, Pune', gate: 'S1', seatLabel: 'West Stand', priceUsdt: '11.00', quantity: 25,
+      location: { latitude: 18.5954, longitude: 73.7388, label: 'Shree Shiv Chhatrapati Sports Complex, Pune' },
+    },
+  },
+  {
+    label: 'AHMEDABAD FINAL',
+    draft: {
+      eventName: 'Sabarmati Cup Final', homeTeam: 'Gujarat FC', awayTeam: 'Rajasthan XI', venue: 'Narendra Modi Stadium, Ahmedabad', gate: 'G5', seatLabel: 'Upper Tier', priceUsdt: '22.00', quantity: 60,
+      location: { latitude: 23.0917, longitude: 72.597, label: 'Narendra Modi Stadium, Ahmedabad' },
+    },
+  },
+  {
+    label: 'GUWAHATI DERBY',
+    draft: {
+      eventName: 'Brahmaputra Derby', homeTeam: 'NorthEast United', awayTeam: 'Assam United', venue: 'Indira Gandhi Athletic Stadium, Guwahati', gate: 'E2', seatLabel: 'Main Stand', priceUsdt: '9.00', quantity: 20,
+      location: { latitude: 26.1258, longitude: 91.7612, label: 'Indira Gandhi Athletic Stadium, Guwahati' },
+    },
+  },
+  {
+    label: 'CHENNAI NIGHT',
+    draft: {
+      eventName: 'Marina Football Night', homeTeam: 'Chennaiyin FC', awayTeam: 'Bengaluru FC', venue: 'Jawaharlal Nehru Stadium, Chennai', gate: 'M3', seatLabel: 'South Stand', priceUsdt: '16.00', quantity: 32,
+      location: { latitude: 13.0627, longitude: 80.2792, label: 'Jawaharlal Nehru Stadium, Chennai' },
+    },
+  },
+  {
+    label: 'DELHI CLASSIC',
+    draft: {
+      eventName: 'Capital Classic', homeTeam: 'Delhi FC', awayTeam: 'Punjab FC', venue: 'Ambedkar Stadium, New Delhi', gate: 'D1', seatLabel: 'Central Stand', priceUsdt: '13.00', quantity: 28,
+      location: { latitude: 28.6372, longitude: 77.2431, label: 'Ambedkar Stadium, New Delhi' },
     },
   },
 ];
@@ -176,6 +240,7 @@ export function TicketBuilderForm({ onSubmit, onDraftChange, loading, disabled }
       <Field label="HOME TEAM" value={draft.homeTeam} onChangeText={(v) => update({ homeTeam: v })} />
       <Field label="AWAY TEAM" value={draft.awayTeam} onChangeText={(v) => update({ awayTeam: v })} />
       <Field label="VENUE" value={draft.venue} onChangeText={(v) => update({ venue: v })} />
+      <EventLocationPicker value={draft.location} onChange={(location) => update({ location })} />
       <Field label="GATE" value={draft.gate} onChangeText={(v) => update({ gate: v })} />
       <Field label="SECTION / SEAT" value={draft.seatLabel} onChangeText={(v) => update({ seatLabel: v })} />
 
@@ -208,7 +273,7 @@ export function TicketBuilderForm({ onSubmit, onDraftChange, loading, disabled }
         keyboardType="decimal-pad"
       />
       <Field
-        label="QUANTITY"
+        label="MAX CAPACITY"
         value={String(draft.quantity)}
         onChangeText={(v) => update({ quantity: Math.max(1, Number.parseInt(v, 10) || 1) })}
         keyboardType="number-pad"

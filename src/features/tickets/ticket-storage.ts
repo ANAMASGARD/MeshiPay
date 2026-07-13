@@ -7,6 +7,7 @@ import type {
   TicketDraftInput,
   TicketRecord,
 } from '@/features/tickets/ticket-types';
+import type { PublishedMatch } from '@/features/matches/registry';
 
 const TICKETS_KEY = '@meshipay/tickets_v2';
 const ATTENDEES_KEY = '@meshipay/attendees_v1';
@@ -194,6 +195,22 @@ export async function addReceivedTicket(ticket: TicketRecord): Promise<TicketRec
   const next = [{ ...ticket, kind: 'received' as const }, ...tickets];
   await saveTickets(next);
   return next;
+}
+
+/** Local proof after a decentralized MatchSale purchase; no inventory is stored remotely. */
+export async function mintReceivedTicketFromMatch(params: { match: PublishedMatch; quantity: number; senderAddress: string; txHash: string }): Promise<TicketRecord[]> {
+  const timestamp = nowIso();
+  const ticket: TicketRecord = {
+    ticketId: `match-${params.match.matchId}-${params.txHash.slice(2, 10)}`,
+    kind: 'received', eventName: params.match.eventName, homeTeam: params.match.homeTeam, awayTeam: params.match.awayTeam,
+    venue: params.match.venue, gate: 'EVENT GATE', seatLabel: `${params.quantity} GENERAL ADMISSION`,
+    startAt: params.match.startAt, endAt: params.match.startAt, priceUsdt: params.match.priceUsdt,
+    currency: 'USDT_SEPOLIA', quantity: params.quantity, remainingQuantity: params.quantity,
+    receiverAddress: params.match.clubAddress, senderAddress: params.senderAddress, txHash: params.txHash,
+    status: 'transferred', checkInCode: createCheckInCode(), location: params.match.location,
+    matchSaleAddress: params.match.saleAddress, matchId: params.match.matchId, createdAt: timestamp, updatedAt: timestamp,
+  };
+  return addReceivedTicket(ticket);
 }
 
 export async function addAttendee(attendee: AttendeeRecord): Promise<AttendeeRecord[]> {

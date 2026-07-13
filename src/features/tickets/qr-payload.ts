@@ -25,6 +25,7 @@ export const qrPayloadEnvelopeSchema = z.object({
   endAt: z.string().min(1),
   currency: currencyLiteral,
   checkInCode: z.string().min(1),
+  matchSaleAddress: z.string().min(1).optional(),
   expiresAt: z.number(),
   payloadHash: z.string().min(1),
   imageUri: z.string().optional(),
@@ -85,6 +86,7 @@ const QR_HASH_FIELD_ORDER = [
   'endAt',
   'currency',
   'checkInCode',
+  'matchSaleAddress',
   'expiresAt',
 ] as const;
 
@@ -269,6 +271,7 @@ export async function buildQrPayload(params: {
     endAt: params.ticket.endAt,
     currency: 'USDT_SEPOLIA',
     checkInCode: params.ticket.checkInCode,
+    matchSaleAddress: params.ticket.matchSaleAddress,
     expiresAt: params.expiresAt,
   };
   const payloadHash = await hashPayloadFields(body);

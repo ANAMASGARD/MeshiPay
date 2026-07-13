@@ -1,1 +1,1 @@
-export { default } from './(tabs)/treasury';
+export { default } from '@/features/treasury/treasury-screen';

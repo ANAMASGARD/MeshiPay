@@ -2,7 +2,7 @@
 
 Current engineering handoff for the WDK-only ticket-payment gateway.
 
-**Last updated:** 2026-07-13 12:36 IST
+**Last updated:** 2026-07-13 19:55 IST
 
 ---
 
@@ -14,7 +14,10 @@ Current engineering handoff for the WDK-only ticket-payment gateway.
 - **Receiver fulfillment:** The receiver polls Sepolia mock-USDT `Transfer` logs from the QR session's start block; on matching receiver and exact amount, it saves an attendee locally.
 - **Storage:** Tickets, payment sessions, and attendees are stored in AsyncStorage on their respective phones. No central ticket inventory or payment database exists.
 - **Persona shell:** The app uses an explicit `choose-mode` step, then keeps the active shell role-specific. Fan tabs are `Pay`, `Tickets`, `Map`, `Settings`. Club tabs are `Gate`, `Verify`, `Issued`, `Settings`. `Settings` stays rightmost in both shells.
-- **Map tab:** `Map` is currently a placeholder route for future Mapbox work. It does not request location access or render a live map yet.
+- **Map tab:** Live Mapbox globe with direct Sepolia `MatchPosted` log discovery, red event pins, marker detail cards, availability, kickoff time, and WDK purchase action. It requires `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` and the public registry address below.
+- **Club templates/location:** Ticket creation includes 13 demo templates (10 Indian stadium locations), Mapbox venue search suggestions, direct latitude/longitude entry, exact pin zooming, and a red selected-location marker.
+- **On-chain match registry:** `FootballMatchRegistry` is deployed on Sepolia at `0x8f9B03359B0AF9e0C8115349cCEbC009F4A7683A` (deployment block `11264333`). Source is `contracts/src/FootballMatchRegistry.sol`; deployment helper is `scripts/deploy-match-registry.mjs`.
+- **Fast publish behavior:** WDK may return a UserOperation hash before public RPC indexing. Ticket creation saves immediately after WDK accepts the transaction and stores `registryTxHash`; receipt/event lookup is opportunistic, and Map log discovery picks up `MatchPosted` asynchronously. Do not reintroduce a long blocking receipt wait in the create flow.
 
 ## Critical WDK configuration
 
@@ -24,6 +27,7 @@ Current engineering handoff for the WDK-only ticket-payment gateway.
 - **Bundler / paymaster:** Candide public v3 endpoints; Safe modules version must remain `'0.3.0'`.
 - **Fee mode:** paymaster-token mode. Sender needs mock USD₮ for ticket price plus network fee; Sepolia ETH is not required for the intended demo path.
 - **Demo ceiling:** `SEPOLIA_DEMO_TRANSFER_MAX_FEE_ATOMIC = 20_000_000` (20 test USD₮) in `src/config/wdk.ts`. It is intentionally testnet-only and is applied by both WDK and Meshipay preflight.
+- **Contract-call ceiling:** `SEPOLIA_DEMO_TRANSACTION_MAX_FEE_ATOMIC = 20_000_000` covers WDK ERC-4337 calldata calls (registry publish and approval + `MatchSale.buy`).
 - **Fee boundary:** WDK rejects fee quotes `>= transferMaxFee`; Meshipay preflight matches that condition exactly, preventing an avoidable WDK submission failure.
 
 ## Payment flow
@@ -52,9 +56,10 @@ Current engineering handoff for the WDK-only ticket-payment gateway.
 
 ## Verification and release
 
-- `npm run verify` passed on 2026-07-13: Expo lint, TypeScript, and **42 Vitest tests**.
+- `npm run verify` passed on 2026-07-13: Expo lint, TypeScript, and **46 Vitest tests**.
 - Tests cover payment preflight/send, a 20 USD₮ ticket with a 0.25 USD₮ fee, QR validation/encryption, payment sessions, treasury swap helpers, wallet utilities, and the role-specific nav shell.
 - WDK bundle regenerated successfully on 2026-07-13.
+- Registry deployment bytecode was verified on Sepolia after deployment. Public app configuration lives in ignored `.env.local` as `EXPO_PUBLIC_MATCH_REGISTRY_ADDRESS` and `EXPO_PUBLIC_MATCH_REGISTRY_DEPLOYMENT_BLOCK`.
 - Standalone release APK had a successful build on 2026-07-13. Rebuild it before demoing if you need a binary that matches the latest JS changes.
 
 ## Commands
@@ -79,3 +84,9 @@ The build and automated checks are complete, but the final external proof must h
 4. Receiver waits for the Sepolia `Transfer` log and confirms the attendee appears.
 
 Do not describe the app as “100% offline USDT.” QR transfer and local ticket storage are device-local; blockchain settlement and receiver verification require internet.
+
+## Latest demo handoff (2026-07-13 evening)
+
+- Fast demo path: select an Indian stadium template, confirm the red pin/venue, publish the ticket, and continue immediately after the WDK UserOperation is accepted. Sepolia log indexing can lag; the app treats this as asynchronous rather than showing a false save failure.
+- If the registry alert appears, restart Metro with `npm start -- --clear`; standalone APKs must be rebuilt after env changes.
+- `SEPOLIA_DEPLOYER_PRIVATE_KEY` is deployment-only and must never be committed or shipped in the app. Remove it from `.env.local` after deployments.

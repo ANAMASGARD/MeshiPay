@@ -11,6 +11,7 @@ function TabsLayoutInner() {
 
   return (
     <SwipeTabs
+      key={persona ?? 'none'}
       initialRouteName={isClub ? 'gate' : 'pay'}
       tabBar={(props) => <GlassTabBar {...props} />}
       tabBarPosition="bottom"
@@ -24,12 +25,18 @@ function TabsLayoutInner() {
         tabBarIndicatorStyle: { height: 0, opacity: 0 },
         tabBarStyle: { height: 0 },
       }}>
-      {isClub ? <SwipeTabs.Screen name="gate" options={{ title: 'CREATE' }} /> : null}
-      {!isClub ? <SwipeTabs.Screen name="pay" options={{ title: 'PAY', swipeEnabled: !locked }} /> : null}
-      {!isClub ? <SwipeTabs.Screen name="tickets" options={{ title: 'TICKETS' }} /> : null}
-      {!isClub ? <SwipeTabs.Screen name="map" options={{ title: 'MAP' }} /> : null}
-      {isClub ? <SwipeTabs.Screen name="attendees" options={{ title: 'VERIFY' }} /> : null}
-      {isClub ? <SwipeTabs.Screen name="issued" options={{ title: 'ISSUED' }} /> : null}
+      <SwipeTabs.Protected guard={!isClub}>
+        <SwipeTabs.Screen name="pay" options={{ title: 'PAY', swipeEnabled: !locked }} />
+        <SwipeTabs.Screen name="tickets" options={{ title: 'TICKETS' }} />
+        <SwipeTabs.Screen name="map" options={{ title: 'MAP', swipeEnabled: false }} />
+      </SwipeTabs.Protected>
+
+      <SwipeTabs.Protected guard={isClub}>
+        <SwipeTabs.Screen name="gate" options={{ title: 'CREATE' }} />
+        <SwipeTabs.Screen name="issued" options={{ title: 'ISSUED' }} />
+        <SwipeTabs.Screen name="attendees" options={{ title: 'VERIFY' }} />
+      </SwipeTabs.Protected>
+
       <SwipeTabs.Screen name="settings" options={{ title: 'SETTINGS' }} />
     </SwipeTabs>
   );

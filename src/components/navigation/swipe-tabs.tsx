@@ -13,4 +13,4 @@ export const SwipeTabs = withLayoutContext<
   typeof Navigator,
   TabNavigationState<ParamListBase>,
   MaterialTopTabNavigationEventMap
->(Navigator);
+>(Navigator, undefined, true);

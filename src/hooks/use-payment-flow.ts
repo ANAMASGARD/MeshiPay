@@ -12,6 +12,7 @@ import { mintReceivedTicketFromQr } from '@/features/tickets/ticket-mint';
 import { markSessionPaid } from '@/features/tickets/ticket-storage';
 import { useTickets } from '@/features/tickets/tickets-context';
 import { useAccount } from '@/features/wdk/wdk-hooks';
+import { buyMatchTickets, type EvmAccountExtension } from '@/features/matches/registry';
 
 export type PayStep = 'idle' | 'scanning' | 'confirm';
 
@@ -23,10 +24,11 @@ const PAY_STAGE_LABELS: Record<PaymentSendStage, string> = {
 };
 
 export function usePaymentFlow(walletReady: boolean) {
-  const { address, send, getBalance, estimateFee } = useAccount({
+  const account = useAccount({
     network: 'ethereum',
     accountIndex: 0,
-  });
+  }) as unknown as ReturnType<typeof useAccount> & { extension: <T extends object>() => T };
+  const { address, send, getBalance, estimateFee } = account;
   const tickets = useTickets();
 
   const [step, setStep] = useState<PayStep>('idle');
@@ -77,21 +79,21 @@ export function usePaymentFlow(walletReady: boolean) {
     }
 
     try {
-      if (!getBalance || !estimateFee) {
+      if (!payload.matchSaleAddress && (!getBalance || !estimateFee)) {
         throw new Error('Wallet balance APIs unavailable. Reload the app and retry.');
       }
 
       setPaying(true);
       setPayStage('checking_balance');
-      const preflight = await preflightSepoliaUsdtPayment({
+      const preflight = payload.matchSaleAddress ? null : await preflightSepoliaUsdtPayment({
         walletAddress: address,
-        getBalance,
-        estimateFee,
+        getBalance: getBalance!,
+        estimateFee: estimateFee!,
         to: payload.receiverAddress,
         amountUsdt: payload.priceUsdt,
         onStage: setPayStage,
       });
-      const quotedFee = formatUsdtFromAtomic(parseFeeAtomic(preflight.fee));
+      const quotedFee = preflight ? formatUsdtFromAtomic(parseFeeAtomic(preflight.fee)) : 'quoted during checkout';
 
       Alert.alert(
         'Confirm payment',
@@ -105,15 +107,17 @@ export function usePaymentFlow(walletReady: boolean) {
               setPaying(true);
               setPayStage('checking_balance');
               try {
-                if (!getBalance || !estimateFee) {
+                if (!payload.matchSaleAddress && (!getBalance || !estimateFee)) {
                   throw new Error('Wallet balance APIs unavailable. Reload the app and retry.');
                 }
 
-                const result = await sendSepoliaUsdtPayment({
+                const result = payload.matchSaleAddress
+                  ? await buyMatchTickets(account.extension<EvmAccountExtension>(), payload.matchSaleAddress, payload.priceUsdt, 1)
+                  : await sendSepoliaUsdtPayment({
                   walletAddress: address,
                   send,
-                  getBalance,
-                  estimateFee,
+                  getBalance: getBalance!,
+                  estimateFee: estimateFee!,
                   to: payload.receiverAddress,
                   amountUsdt: payload.priceUsdt,
                   onStage: setPayStage,
@@ -164,7 +168,7 @@ export function usePaymentFlow(walletReady: boolean) {
       setPaying(false);
       setPayStage(null);
     }
-  }, [address, estimateFee, getBalance, payload, send, tickets, walletReady]);
+  }, [account, address, estimateFee, getBalance, payload, send, tickets, walletReady]);
 
   const resetFlow = useCallback(() => {
     setStep('idle');

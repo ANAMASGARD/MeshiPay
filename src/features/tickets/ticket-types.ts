@@ -22,6 +22,12 @@ export type TicketRecord = {
   currency: 'USDT_SEPOLIA';
   quantity: number;
   remainingQuantity: number;
+  /** Exact public Mapbox pin selected by the club. */
+  location?: EventLocation;
+  /** Permissionless MatchSale contract which owns capacity for this event. */
+  matchSaleAddress?: string;
+  matchId?: string;
+  registryTxHash?: string;
   receiverAddress: string;
   senderAddress?: string;
   sessionId?: string;
@@ -36,6 +42,12 @@ export type TicketRecord = {
   ticketQrPayload?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type EventLocation = {
+  longitude: number;
+  latitude: number;
+  label?: string;
 };
 
 export type AttendeeRecord = {
@@ -69,6 +81,7 @@ export type TicketDraftInput = {
   endAt: string;
   priceUsdt: string;
   quantity: number;
+  location?: EventLocation;
   notes?: string;
   imageUri?: string;
 };

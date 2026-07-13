@@ -284,10 +284,20 @@ After `npm install`, postinstall re-applies the bare-kit patch. Re-run `npm run 
 
 ---
 
+## Global match registry and demo location flow (2026-07-13)
+
+- `contracts/src/FootballMatchRegistry.sol` contains the permissionless registry and isolated `MatchSale` contracts. The live Sepolia registry is `0x8f9B03359B0AF9e0C8115349cCEbC009F4A7683A`, deployed at block `11264333`.
+- Public runtime configuration belongs in ignored `.env.local`: `EXPO_PUBLIC_MATCH_REGISTRY_ADDRESS` and `EXPO_PUBLIC_MATCH_REGISTRY_DEPLOYMENT_BLOCK`. `SEPOLIA_DEPLOYER_PRIVATE_KEY` is deployment-only; never commit it, bundle it, or print it.
+- `src/components/tickets/ticket-builder-form.tsx` contains 13 demo templates, including 10 Indian stadiums. `src/components/tickets/event-location-picker.tsx` provides Mapbox venue search suggestions, manual coordinates, exact pin selection, automatic zoom, and a red marker.
+- `src/app/(tabs)/map.tsx` queries `MatchPosted` logs directly from Sepolia, displays red match pins, event details, kickoff, price, remaining seats, and a WDK purchase action. It chunks log queries and reads `MatchSale.remaining()` for capacity.
+- `src/features/matches/registry.ts` owns contract ABI, calldata, log decoding, registry publishing, and batched approval + `buy()` calls. `transactionMaxFee` is separate from the legacy token-transfer `transferMaxFee`.
+- Do not make ticket creation block on a public receipt. WDK can return a UserOperation hash before the RPC exposes a receipt; save the local ticket and `registryTxHash` immediately after WDK accepts the publish. Map discovery indexes the event asynchronously.
+- If a fresh dev client does not see the registry, restart Metro with `npm start -- --clear`; a standalone APK must be rebuilt after env changes. `npm run verify` currently passes with 46 tests.
+
 ## Verification
 
 ```bash
-npm run verify   # Expo lint + TypeScript + Vitest (40 tests as of 2026-07-12)
+npm run verify   # Expo lint + TypeScript + Vitest (46 tests as of 2026-07-13)
 ```
 
 ---

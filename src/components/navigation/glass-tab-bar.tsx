@@ -5,8 +5,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
+import { usePersona } from '@/features/persona/persona-context';
 
 type TabKey = 'pay' | 'gate' | 'tickets' | 'map' | 'attendees' | 'issued' | 'settings';
+
+const FAN_TABS: readonly TabKey[] = ['pay', 'tickets', 'map', 'settings'];
+const CLUB_TABS: readonly TabKey[] = ['gate', 'issued', 'attendees', 'settings'];
 
 const TAB_CONFIG: Record<
   TabKey,
@@ -28,12 +32,19 @@ function routeToTab(routeName: string): TabKey | null {
   return null;
 }
 
+function isVisibleTab(routeName: string, isClub: boolean): routeName is TabKey {
+  const allowed = isClub ? CLUB_TABS : FAN_TABS;
+  return (allowed as readonly string[]).includes(routeName);
+}
+
 /**
  * Glass-style tab bar using translucent Views only.
  * Avoids expo-blur so GET STARTED works without a native rebuild.
  */
 export function GlassTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { persona } = usePersona();
+  const isClub = persona === 'club';
 
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 10) }]}>
@@ -43,7 +54,7 @@ export function GlassTabBar({ state, navigation }: MaterialTopTabBarProps) {
           <View style={styles.inner}>
             {state.routes.map((route, index) => {
               const tab = routeToTab(route.name);
-              if (!tab) {
+              if (!tab || !isVisibleTab(route.name, isClub)) {
                 return null;
               }
 
