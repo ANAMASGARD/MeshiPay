@@ -14,6 +14,7 @@ Build a **real-world fan payment + ticket gateway** where:
 - **WDK (Tether)** moves **USDT** on-chain — self-custodial wallet, user holds keys.
 - **Payment QR** embeds the full hash-verified ticket envelope (event, gate, seat, check-in code, price, receiver address).
 - **All tickets and receipts** are stored **locally on each phone**.
+- The app uses a one-time persona choice and then keeps a role-specific shell. Fan UI and club UI do not mix actions.
 
 **Hackathon track (semifinal):** **WDK** — self-custodial USDT payments + QR-bootstrap ticketing. Theme: football — stadium gates, watch parties, local club matches.
 
@@ -36,27 +37,28 @@ Build a **real-world fan payment + ticket gateway** where:
 ### First launch
 
 1. **Onboarding** (`src/app/index.tsx`) — shown every open until WDK wallet is `READY` (unlocked). Matches `Onboarding-Screen.png` layout; mascot from `onboarding-mascot-crop.png`. GET STARTED → `/home`.
-2. User **creates/unlocks WDK wallet** (Sepolia testnet for demo) on `/home`.
-3. The same install acts as a **Receiver** when it creates a payment QR, or as a **Sender** when it scans one. There is no persistent role picker and no P2P dependency.
+2. The app redirects to **`/choose-mode`** when the wallet is ready and no persona is stored yet. User picks either **Fan** or **Club** once.
+3. User **creates/unlocks WDK wallet** (Sepolia testnet for demo) on `/home`.
+4. The selected persona determines the shell. Fan UI and club UI stay separated until the user switches persona from Settings.
 
 ### Receiver (gatekeeper)
 
 1. Creates a **ticket** (event, gate, price, check-in code).
 2. Taps **Receive Payment** — QR encodes full hash-verified ticket envelope + receiver wallet.
 3. Watches Sepolia for incoming USDT (`useReceiverChainWatcher`).
-4. **Attendees screen:** local list after on-chain payment detected.
+4. Uses the club shell: bottom nav is `Gate`, `Verify`, `Issued`, `Settings`. No pay action appears in this shell. **Attendees/Verify** stays local after on-chain payment is detected.
 
 ### Sender (fan/payer)
 
 1. Taps **Scan** → camera opens → scans gate **payment QR** (not ticket display QR).
 2. Confirms event details and price from QR envelope.
 3. **WDK `send()`** pays USDT on Sepolia.
-4. **Ticket minted locally** from QR + `txHash` → **Tickets** tab.
+4. Uses the fan shell: bottom nav is `Pay`, `Tickets`, `Map`, `Settings`. No create/issued/verify actions appear in this shell. **Ticket minted locally** from QR + `txHash` → **Tickets** tab.
 
 ### Optional polish (post-MVP)
 
 - **Radar-style** nearby receiver discovery (visual list of peers in same topic or BLE later).
-- Sender role switch without reinstalling app.
+- Persona switching from Settings without reinstalling app.
 
 ---
 
@@ -145,6 +147,8 @@ Load Archivo Black + Space Grotesk via `expo-font` in `_layout.tsx` when adding 
 
 **Glass card** (future screens): `backgroundColor: MeshipayBrand.glass` + `BlurView` underlay on iOS; keep black border and hard shadow.
 
+**Bottom nav animation** — the active tab icon uses Lottie. Keep the motion subtle and role-filtered so the fan and club shells still feel distinct.
+
 ### Asset map
 
 | File | Agent instruction |
@@ -160,11 +164,15 @@ Load Archivo Black + Space Grotesk via `expo-font` in `_layout.tsx` when adding 
 | Route / area | Content | Status |
 |--------------|---------|--------|
 | `index` (`/`) | Onboarding — wallet gate until `READY` | **Done** |
+| `choose-mode` | One-time persona picker: Fan or Club | Done |
 | `home` | Wallet create/unlock WDK | Done |
-| Gate | Receiver QR display + local attendee list | Done — Sepolia USDT watcher |
-| Pay | Sender scan → WDK fee quote → approve → pay | Done |
-| **Tickets** (bottom nav) | Sender’s locally stored, QR-verifiable tickets | Done |
-| Settings | Wallet address, balance, security, logout | Done |
+| `gate` | Club QR display + local attendee list | Done — Sepolia USDT watcher |
+| `pay` | Fan scan → WDK fee quote → approve → pay | Done |
+| `tickets` | Fan’s locally stored, QR-verifiable tickets | Done |
+| `map` | Fan placeholder tab reserved for future map work | Done |
+| `attendees` | Club verification view for detected payments | Done |
+| `issued` | Club-issued tickets list | Done |
+| `settings` | Wallet address, balance, security, persona switch, logout | Done |
 
 **Onboarding gate (implemented):** `src/app/index.tsx` shows `OnboardingScreen` until `useWdkApp().state.status === 'READY'`. GET STARTED → `/home` for wallet setup. No AsyncStorage “seen onboarding” flag.
 

@@ -25,6 +25,7 @@
     "plugins": [
       "expo-dev-client",
       "expo-router",
+      "@rnmapbox/maps",
       [
         "expo-camera",
         {

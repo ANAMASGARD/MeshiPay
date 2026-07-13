@@ -1,24 +1,28 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
+import LottieView from 'lottie-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 
-type TabKey = 'pay' | 'gate' | 'tickets' | 'settings';
+type TabKey = 'pay' | 'gate' | 'tickets' | 'map' | 'attendees' | 'issued' | 'settings';
 
 const TAB_CONFIG: Record<
   TabKey,
   { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }
 > = {
   pay: { label: 'PAY', icon: 'qrcode-scan' },
-  gate: { label: 'GATE', icon: 'qrcode' },
+  gate: { label: 'CREATE', icon: 'plus-box-outline' },
   tickets: { label: 'TICKETS', icon: 'ticket-confirmation-outline' },
+  map: { label: 'MAP', icon: 'map-outline' },
+  attendees: { label: 'VERIFY', icon: 'account-check-outline' },
+  issued: { label: 'ISSUED', icon: 'ticket-confirmation-outline' },
   settings: { label: 'SETTINGS', icon: 'cog-outline' },
 };
 
 function routeToTab(routeName: string): TabKey | null {
-  if (routeName === 'pay' || routeName === 'gate' || routeName === 'tickets' || routeName === 'settings') {
+  if (routeName === 'pay' || routeName === 'gate' || routeName === 'tickets' || routeName === 'map' || routeName === 'attendees' || routeName === 'issued' || routeName === 'settings') {
     return routeName;
   }
   return null;
@@ -63,27 +67,23 @@ export function GlassTabBar({ state, navigation }: MaterialTopTabBarProps) {
                     }
                   }}
                   style={styles.tab}>
-                  {focused ? (
-                    <View style={styles.activeIconWrap}>
-                      <View style={styles.activeIconShadow} />
-                      <View style={styles.activeIcon}>
-                        <MaterialCommunityIcons
-                          name={config.icon}
-                          size={26}
-                          color={MeshipayBrand.border}
-                        />
+                  <View style={styles.iconSlot}>
+                    {focused ? (
+                      <View style={styles.activeIconWrap}>
+                        <View style={styles.activeIconShadow} />
+                        <View style={styles.activeIcon}>
+                          <LottieView
+                            autoPlay
+                            loop
+                            source={require('@/assets/lottie/active-nav-pulse.json')}
+                            style={styles.pulse}
+                          />
+                          <MaterialCommunityIcons name={config.icon} size={24} color={MeshipayBrand.border} />
+                        </View>
                       </View>
-                    </View>
-                  ) : (
-                    <MaterialCommunityIcons
-                      name={config.icon}
-                      size={26}
-                      color={MeshipayBrand.border}
-                    />
-                  )}
-                  <Text style={[styles.label, focused ? styles.labelActive : null]}>
-                    {config.label}
-                  </Text>
+                    ) : <MaterialCommunityIcons name={config.icon} size={25} color={MeshipayBrand.foreground} />}
+                  </View>
+                  <Text style={[styles.label, focused ? styles.labelActive : null]}>{config.label}</Text>
                 </Pressable>
               );
             })}
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   },
   glassOuter: {
     position: 'relative',
-    borderRadius: 22,
+    borderRadius: 16,
   },
   glassHighlight: {
     position: 'absolute',
@@ -117,55 +117,57 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   glassPanel: {
-    borderRadius: 22,
+    borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 3,
+    borderColor: MeshipayBrand.border,
     backgroundColor: MeshipayBrand.navGlass,
   },
   inner: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-around',
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 7,
     paddingHorizontal: 6,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    gap: 6,
-    minHeight: 68,
-    justifyContent: 'flex-end',
+    minHeight: 64,
+    justifyContent: 'space-between',
   },
+  iconSlot: { height: 48, alignItems: 'center', justifyContent: 'center' },
   activeIconWrap: {
     position: 'relative',
-    width: 52,
-    height: 52,
+    width: 46,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
   },
   activeIconShadow: {
     position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
     backgroundColor: MeshipayBrand.border,
     bottom: -4,
     right: -4,
   },
   activeIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
     borderWidth: 3,
     borderColor: MeshipayBrand.border,
     backgroundColor: MeshipayBrand.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  pulse: { position: 'absolute', width: 46, height: 46 },
   label: {
-    fontSize: 11,
+    fontSize: 10,
+    lineHeight: 13,
     fontWeight: '800',
     letterSpacing: 0.6,
     color: MeshipayBrand.foreground,

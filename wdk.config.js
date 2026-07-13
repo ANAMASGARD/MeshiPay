@@ -12,6 +12,10 @@ module.exports = {
     ethereum: { package: '@tetherto/wdk-wallet-evm-erc-4337' }
   },
 
+  protocols: {
+    velora: { package: '@tetherto/wdk-protocol-swap-velora-evm' }
+  },
+
   // Output paths (optional, defaults shown)
   output: {
     bundle: './.wdk-bundle/wdk-worklet.bundle.js',

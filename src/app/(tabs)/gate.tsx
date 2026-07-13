@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
-import { AttendeeRow } from '@/components/receiver/attendee-row';
 import { PaymentQrModal } from '@/components/receiver/payment-qr-modal';
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { TicketOfferList } from '@/components/tickets/ticket-offer-list';
@@ -17,7 +16,7 @@ import { useWdkApp } from '@/features/wdk/wdk-hooks';
 export default function GateScreen() {
   const router = useRouter();
   const { state } = useWdkApp();
-  const { tickets, attendees, loading: ticketsLoading } = useTickets();
+  const { tickets, loading: ticketsLoading } = useTickets();
   const walletReady = state.status === 'READY';
 
   const [paymentTicket, setPaymentTicket] = useState<TicketRecord | null>(null);
@@ -45,15 +44,6 @@ export default function GateScreen() {
           onReceivePayment={(ticket) => setPaymentTicket(ticket)}
         />
       )}
-
-      {attendees.length > 0 ? (
-        <>
-          <Text style={styles.sectionTitle}>ATTENDEES</Text>
-          {attendees.map((attendee) => (
-            <AttendeeRow key={attendee.attendeeId} attendee={attendee} />
-          ))}
-        </>
-      ) : null}
 
       {paymentTicket ? (
         <PaymentQrModal

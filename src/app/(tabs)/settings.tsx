@@ -13,6 +13,7 @@ import { shortWalletAddress } from '@/components/wallet/wallet-utils';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { clearTicketData } from '@/features/tickets/ticket-storage';
 import { useAccount, useWdkApp, useWalletManager } from '@/features/wdk/wdk-hooks';
+import { personaHome, usePersona } from '@/features/persona/persona-context';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function SettingsScreen() {
   const { lock, getMnemonic } = useWalletManager();
   const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
   const [cameraPermission] = useCameraPermissions();
+  const { persona, setPersona } = usePersona();
 
   const profileLabel = address
     ? `Meshipay User (${shortWalletAddress(address)})`
@@ -80,6 +82,14 @@ export default function SettingsScreen() {
     ]);
   }, []);
 
+  const handleSwitchMode = useCallback(() => {
+    const next = persona === 'club' ? 'fan' : 'club';
+    Alert.alert('Switch matchday mode', `Open ${next === 'club' ? 'Club — Sell & Protect' : 'Fan — Pay & Enter'} workspace?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Switch', onPress: () => { void setPersona(next).then(() => router.replace(personaHome(next))); } },
+    ]);
+  }, [persona, router, setPersona]);
+
   return (
     <PitchScreen>
       <Text style={styles.heading}>SETTINGS</Text>
@@ -93,6 +103,20 @@ export default function SettingsScreen() {
         </>
       ) : null}
 
+      <NeoBrutalMenuRow
+        icon={<MaterialCommunityIcons name="swap-horizontal" size={28} color={MeshipayBrand.border} />}
+        subtitle={persona === 'club' ? 'Club — Sell & Protect' : 'Fan — Pay & Enter'}
+        title="SWITCH MATCHDAY MODE"
+        onPress={handleSwitchMode}
+      />
+      {persona === 'club' ? (
+        <NeoBrutalMenuRow
+          icon={<MaterialCommunityIcons name="shield-star-outline" size={28} color={MeshipayBrand.border} />}
+          subtitle="Rules, reserves & XAU₮ target"
+          title="CLUB TREASURY"
+          onPress={() => router.push('/treasury' as never)}
+        />
+      ) : null}
       <NeoBrutalMenuRow
         icon={<MaterialCommunityIcons name="account-circle-outline" size={28} color={MeshipayBrand.border} />}
         subtitle={profileLabel}

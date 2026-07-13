@@ -28,7 +28,7 @@ export function OnboardingScreen() {
   const mascotHeight = mascotWidth * 1.12;
 
   const handleGetStarted = useCallback(() => {
-    router.replace('/(tabs)/gate');
+    router.replace('/choose-mode' as never);
   }, [router]);
 
   return (

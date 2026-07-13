@@ -5,9 +5,11 @@ import { OnboardingScreen } from '@/components/onboarding/onboarding-screen';
 import { MeshipayDotsLoader } from '@/components/ui/meshipay-dots-loader';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { useWdkApp } from '@/features/wdk/wdk-hooks';
+import { personaHome, usePersona } from '@/features/persona/persona-context';
 
 export default function IndexScreen() {
   const { state } = useWdkApp();
+  const { persona, loading: personaLoading } = usePersona();
 
   if (state.status === 'INITIALIZING' || state.status === 'REINITIALIZING') {
     return (
@@ -17,8 +19,8 @@ export default function IndexScreen() {
     );
   }
 
-  if (state.status === 'READY') {
-    return <Redirect href="/(tabs)/gate" />;
+  if (state.status === 'READY' && !personaLoading) {
+    return <Redirect href={(persona ? personaHome(persona) : '/choose-mode') as never} />;
   }
 
   return <OnboardingScreen />;

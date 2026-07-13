@@ -7,6 +7,7 @@ export type MeshipayWdkConfigs = {
       config: Record<string, unknown>;
     }
   >;
+  protocols?: Record<string, { blockchain: string; protocolName: string; config: Record<string, unknown> }>;
 };
 
 export type EthereumNetworkConfig = {
@@ -47,6 +48,13 @@ export const wdkConfigs: MeshipayWdkConfigs = {
           address: '0xd077a400968890eacc75cdc901f0356c943e4fdb',
         },
       },
+    },
+  },
+  protocols: {
+    velora: {
+      blockchain: 'ethereum',
+      protocolName: 'velora',
+      config: {},
     },
   },
 };

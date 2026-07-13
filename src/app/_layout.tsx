@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { TicketsProvider } from '@/features/tickets/tickets-context';
+import { PersonaProvider } from '@/features/persona/persona-context';
 import { MeshipayWdkProvider } from '@/features/wdk/wdk-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -26,9 +27,11 @@ function AppShell() {
       <AnimatedSplashOverlay />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B100B' } }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="choose-mode" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="create-ticket" />
         <Stack.Screen name="ticket-preview/[ticketId]" />
+        <Stack.Screen name="treasury" />
         <Stack.Screen name="explore" />
       </Stack>
     </ThemeProvider>
@@ -38,9 +41,11 @@ function AppShell() {
 export default function RootLayout() {
   return (
     <MeshipayWdkProvider>
-      <TicketsProvider>
-        <AppShell />
-      </TicketsProvider>
+      <PersonaProvider>
+        <TicketsProvider>
+          <AppShell />
+        </TicketsProvider>
+      </PersonaProvider>
     </MeshipayWdkProvider>
   );
 }

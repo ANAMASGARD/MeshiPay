@@ -2,7 +2,7 @@
 
 Current engineering handoff for the WDK-only ticket-payment gateway.
 
-**Last updated:** 2026-07-12 18:15 IST
+**Last updated:** 2026-07-13 12:36 IST
 
 ---
 
@@ -13,6 +13,8 @@ Current engineering handoff for the WDK-only ticket-payment gateway.
 - **Ticket delivery:** Receiver creates an encrypted, hash-verified payment QR. Sender scans it locally, sees the ticket data, pays, and mints a local ticket only after WDK returns a transaction hash.
 - **Receiver fulfillment:** The receiver polls Sepolia mock-USDT `Transfer` logs from the QR session's start block; on matching receiver and exact amount, it saves an attendee locally.
 - **Storage:** Tickets, payment sessions, and attendees are stored in AsyncStorage on their respective phones. No central ticket inventory or payment database exists.
+- **Persona shell:** The app uses an explicit `choose-mode` step, then keeps the active shell role-specific. Fan tabs are `Pay`, `Tickets`, `Map`, `Settings`. Club tabs are `Gate`, `Verify`, `Issued`, `Settings`. `Settings` stays rightmost in both shells.
+- **Map tab:** `Map` is currently a placeholder route for future Mapbox work. It does not request location access or render a live map yet.
 
 ## Critical WDK configuration
 
@@ -50,14 +52,10 @@ Current engineering handoff for the WDK-only ticket-payment gateway.
 
 ## Verification and release
 
-- `npm run verify` passed on 2026-07-12: Expo lint, TypeScript, and **40 Vitest tests**.
-- Tests cover payment preflight/send, a 20 USD₮ ticket with a 0.25 USD₮ fee, QR validation/encryption, payment sessions, and wallet utilities.
-- WDK bundle regenerated successfully on 2026-07-12.
-- Standalone release APK built successfully on 2026-07-12 18:15 IST:
-  - `android/app/build/outputs/apk/release/app-release.apk`
-  - 163 MB
-  - SHA-256: `902cc1b9613e9c37889a1d24f0e837bd29687a44df8655ac580082832a96cd3c`
-  - `unzip -t` passed.
+- `npm run verify` passed on 2026-07-13: Expo lint, TypeScript, and **42 Vitest tests**.
+- Tests cover payment preflight/send, a 20 USD₮ ticket with a 0.25 USD₮ fee, QR validation/encryption, payment sessions, treasury swap helpers, wallet utilities, and the role-specific nav shell.
+- WDK bundle regenerated successfully on 2026-07-13.
+- Standalone release APK had a successful build on 2026-07-13. Rebuild it before demoing if you need a binary that matches the latest JS changes.
 
 ## Commands
 
