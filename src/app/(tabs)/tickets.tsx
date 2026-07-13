@@ -42,6 +42,7 @@ export default function TicketsScreen() {
           <TicketCard
             key={ticket.ticketId}
             ticket={ticket}
+            onQrPress={ticket.ticketQrPayload ? () => setVerificationQr(ticket.ticketQrPayload!) : undefined}
             onPress={() => {
               const actions = [
                 ticket.ticketQrPayload

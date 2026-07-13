@@ -10,6 +10,7 @@ import type { TicketRecord } from '@/features/tickets/ticket-types';
 type TicketCardProps = {
   ticket: TicketRecord;
   onPress?: () => void;
+  onQrPress?: () => void;
 };
 
 function statusBadge(status: TicketRecord['status']): { label: string; color: string } {
@@ -31,7 +32,7 @@ function statusBadge(status: TicketRecord['status']): { label: string; color: st
   }
 }
 
-export const TicketCard = memo(function TicketCard({ ticket, onPress }: TicketCardProps) {
+export const TicketCard = memo(function TicketCard({ ticket, onPress, onQrPress }: TicketCardProps) {
   const badge = statusBadge(ticket.status);
 
   const body = (
@@ -77,13 +78,9 @@ export const TicketCard = memo(function TicketCard({ ticket, onPress }: TicketCa
           <View style={styles.notchBottom} />
         </View>
 
-        <View style={styles.qrSlot}>
-          {ticket.ticketQrPayload ? (
-            <QrCodeView value={ticket.ticketQrPayload} size={88} />
-          ) : (
-            <MaterialCommunityIcons name="qrcode" size={64} color={MeshipayBrand.border} />
-          )}
-        </View>
+        <Pressable accessibilityRole={onQrPress ? 'button' : undefined} accessibilityLabel={onQrPress ? 'Expand ticket QR' : undefined} disabled={!onQrPress} onPress={onQrPress} style={styles.qrSlot}>
+          {ticket.ticketQrPayload ? <QrCodeView value={ticket.ticketQrPayload} size={88} /> : <MaterialCommunityIcons name="qrcode" size={64} color={MeshipayBrand.border} />}
+        </Pressable>
       </View>
     </View>
   );

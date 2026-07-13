@@ -40,6 +40,7 @@ export type TicketRecord = {
   notes?: string;
   imageUri?: string;
   ticketQrPayload?: string;
+  checkedInAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -59,6 +60,8 @@ export type AttendeeRecord = {
   txHash: string;
   receiptId: string;
   paidAt: string;
+  quantity?: number;
+  matchSaleAddress?: string;
 };
 
 export type PaymentSession = {

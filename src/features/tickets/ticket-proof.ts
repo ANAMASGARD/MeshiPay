@@ -21,6 +21,7 @@ export const ticketProofPlaintextSchema = z.object({
   gate: z.string().min(1),
   seatLabel: z.string().min(1),
   priceUsdt: z.string().min(1),
+  endAt: z.string().min(1).optional(),
   paidAt: z.string().min(1),
   payloadHash: z.string().min(1),
 });
@@ -53,6 +54,7 @@ const PROOF_HASH_FIELD_ORDER = [
   'gate',
   'seatLabel',
   'priceUsdt',
+  'endAt',
   'paidAt',
 ] as const;
 
@@ -121,6 +123,7 @@ export async function buildTicketProofPlaintext(ticket: TicketRecord): Promise<T
     gate: ticket.gate,
     seatLabel: ticket.seatLabel,
     priceUsdt: ticket.priceUsdt,
+    endAt: ticket.endAt,
     paidAt: ticket.updatedAt,
   };
   const payloadHash = await hashProofFields(body);
@@ -208,6 +211,10 @@ export async function parseAndVerifyTicketProof(
     const validHash = await verifyTicketProofPlaintext(proof.data);
     if (!validHash) {
       return { ok: false, reason: 'Ticket proof integrity check failed.' };
+    }
+
+    if (proof.data.endAt && new Date(proof.data.endAt).getTime() <= Date.now()) {
+      return { ok: false, reason: 'This ticket has expired.' };
     }
 
     return { ok: true, proof: proof.data };

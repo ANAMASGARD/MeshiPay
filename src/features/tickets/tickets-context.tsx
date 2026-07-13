@@ -21,6 +21,7 @@ import {
 } from '@/features/tickets/ticket-storage';
 import type { ActiveSession, AttendeeRecord, TicketRecord } from '@/features/tickets/ticket-types';
 import { useReceiverChainWatcher } from '@/hooks/use-receiver-chain-watcher';
+import { useMatchSaleWatcher } from '@/hooks/use-match-sale-watcher';
 
 type TicketsContextValue = {
   tickets: TicketRecord[];
@@ -78,6 +79,12 @@ export function TicketsProvider({ children }: { children: ReactNode }) {
     attendees,
     processedPayments: processedPaymentsRef.current,
     onFulfilled: handleChainFulfilled,
+  });
+
+  useMatchSaleWatcher({
+    tickets,
+    attendees,
+    onChange: handleChainFulfilled,
   });
 
   useEffect(() => {

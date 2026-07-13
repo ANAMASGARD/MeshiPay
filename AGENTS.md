@@ -2,6 +2,8 @@
 
 Decentralized **football-themed local payments & ticketing** for the [Tether Developers Cup](https://dorahacks.io). One app, two roles — **Receiver** (gatekeeper) and **Sender** (fan/payer).
 
+**Repository:** https://github.com/ANAMASGARD/MeshiPay
+
 Human overview and demo script: [README.md](./README.md).
 
 ---
@@ -29,6 +31,7 @@ Build a **real-world fan payment + ticket gateway** where:
 | **Local storage** | Fan **Tickets** tab; gatekeeper **Attendees** list |
 
 **Do not claim** “100% offline USDT.” Internet is needed for chain settlement. **Do claim** “WDK self-custodial USDT + QR-bootstrap tickets — no vendor database.”
+Proof QR consumption is local to the verifying gate device until a registry check-in method is deployed; do not describe the current gate marker as chain-wide revocation across both phones.
 
 ---
 
@@ -80,7 +83,7 @@ Football UI (Expo Router)
 
 ## Design pattern language
 
-**Visual identity:** Dark football-pitch UI — **Neo Brutalism** structure + **Glass UI** accents. Playful mascot, serious crypto/P2P copy. Reference mock: `assets/images/FIFA.png`; onboarding reference: `assets/images/Onboarding-Screen.png`.
+**Visual identity:** Dark football-pitch UI — **Neo Brutalism** structure + **Glass UI** accents. Playful mascot, serious crypto copy. Reference mock: `assets/images/FIFA.png`; onboarding reference: `assets/images/Onboarding-Screen.png`.
 
 ### Pattern rules (follow on every new screen)
 
@@ -169,14 +172,33 @@ Load Archivo Black + Space Grotesk via `expo-font` in `_layout.tsx` when adding 
 | `gate` | Club QR display + local attendee list | Done — Sepolia USDT watcher |
 | `pay` | Fan scan → WDK fee quote → approve → pay | Done |
 | `tickets` | Fan’s locally stored, QR-verifiable tickets | Done |
-| `map` | Fan placeholder tab reserved for future map work | Done |
-| `attendees` | Club verification view for detected payments | Done |
-| `issued` | Club-issued tickets list | Done |
+| `map` | Fan Mapbox discovery with durable red match pins, local ticket rehydration, and BUY → Pay checkout | Done |
+| `attendees` | Club verification camera: decrypt/hash-check proof QR and consume once locally | Done |
+| `issued` | Club-issued tickets plus direct `TicketsPurchased` log watcher | Done |
 | `settings` | Wallet address, balance, security, persona switch, logout | Done |
 
 **Onboarding gate (implemented):** `src/app/index.tsx` shows `OnboardingScreen` until `useWdkApp().state.status === 'READY'`. GET STARTED → `/home` for wallet setup. No AsyncStorage “seen onboarding” flag.
 
-Agents: preserve working WDK + P2P native stack when restyling screens.
+Agents: preserve working WDK native stack when restyling screens.
+
+---
+
+## Persona-specific navigation (2026-07-13)
+
+Expo Router auto-registers every file under `(tabs)/`; conditional `{isClub ? <Screen> : null}` is **not** enough. Use:
+
+| Mechanism | File | Purpose |
+|-----------|------|---------|
+| `useOnlyUserDefinedScreens: true` | `src/components/navigation/swipe-tabs.tsx` | Only declared screens enter the pager |
+| `SwipeTabs.Protected guard={…}` | `src/app/(tabs)/_layout.tsx` | Fan vs club route sets |
+| Persona allowlist | `src/components/navigation/glass-tab-bar.tsx` | Defensive tab bar filter |
+| `key={persona}` on `SwipeTabs` | `_layout.tsx` | Clean remount on mode switch |
+
+**Fan tabs (4):** Pay, Tickets, Map, Settings  
+**Club tabs (4):** Create (`gate`), Issued, Verify (`attendees`), Settings  
+**Treasury:** stack route `/treasury` only — opened from Club Settings, never a tab.
+
+Do **not** re-add `(tabs)/treasury.tsx`. Do **not** describe Hyperswarm/P2P ticket transfer in hackathon copy; the shipped product is WDK settlement + QR-bootstrap local mint.
 
 ---
 
@@ -186,7 +208,6 @@ Agents: preserve working WDK + P2P native stack when restyling screens.
 - WDK React Native Quickstart: https://docs.wdk.tether.io/start-building/react-native-quickstart
 - WDK React Native Starter: https://github.com/tetherto/wdk-starter-react-native
 - WDK React Native Core API: https://docs.wdk.tether.io/tools/react-native-core/api-reference
-- Pears Stack: https://docs.pears.com/reference/#building-blocks
 - RetroUI (design reference): https://retroui.dev/docs/installation
 - Legacy design spec: `docs/superpowers/specs/2026-07-07-meshipay-dual-track-design.md` (superseded by § Mission above for product direction)
 
@@ -292,12 +313,12 @@ After `npm install`, postinstall re-applies the bare-kit patch. Re-run `npm run 
 - `src/app/(tabs)/map.tsx` queries `MatchPosted` logs directly from Sepolia, displays red match pins, event details, kickoff, price, remaining seats, and a WDK purchase action. It chunks log queries and reads `MatchSale.remaining()` for capacity.
 - `src/features/matches/registry.ts` owns contract ABI, calldata, log decoding, registry publishing, and batched approval + `buy()` calls. `transactionMaxFee` is separate from the legacy token-transfer `transferMaxFee`.
 - Do not make ticket creation block on a public receipt. WDK can return a UserOperation hash before the RPC exposes a receipt; save the local ticket and `registryTxHash` immediately after WDK accepts the publish. Map discovery indexes the event asynchronously.
-- If a fresh dev client does not see the registry, restart Metro with `npm start -- --clear`; a standalone APK must be rebuilt after env changes. `npm run verify` currently passes with 46 tests.
+- If a fresh dev client does not see the registry, restart Metro with `npm start -- --clear`; a standalone APK must be rebuilt after env changes. `npm run verify` currently passes with 48 tests.
 
 ## Verification
 
 ```bash
-npm run verify   # Expo lint + TypeScript + Vitest (46 tests as of 2026-07-13)
+npm run verify   # Expo lint + TypeScript + Vitest (48 tests as of 2026-07-14)
 ```
 
 ---
@@ -323,6 +344,9 @@ npm run verify   # Expo lint + TypeScript + Vitest (46 tests as of 2026-07-13)
 4. **Both:** fan sees **Tickets**; gatekeeper sees **Attendees** after chain verification.
 5. Mention: no central server; Sepolia testnet mock USD₮; ticket data is encrypted in the payment QR and minted locally only after a transaction hash.
 
+6. Fan Map BUY opens Pay checkout. Confirm YES, approve the WDK MatchSale call, then open Tickets and tap the card to show the encrypted verification QR.
+7. Club Verify scans that QR. The gatekeeper wallet must match the ticket issuer; the proof is rejected if tampered, expired, or already consumed on that gate device.
+
 ### Demo wallet funding (gasless USDT)
 
 1. **Settings → COPY ADDRESS** on the **sender** phone (full `0x…`, 42 chars, no spaces).
@@ -340,4 +364,4 @@ Token Meshipay watches/pays with: `0xd077a400968890eacc75cdc901f0356c943e4fdb` (
 - `SEPOLIA_DEMO_TRANSFER_MAX_FEE_ATOMIC` is `20_000_000` (20 test USD₮) in `src/config/wdk.ts`. This testnet-only ceiling is enforced by WDK and Meshipay preflight; never present it as a production setting.
 - Sender confirmation reads a real `quoteTransfer()` fee first. Meshipay rejects a fee `>= transferMaxFee`, matching WDK exactly, then sends only through `useAccount().send()`.
 - A local sender ticket is minted only after `success === true` and a real `txHash` are returned. The receiver independently polls the mock USDT `Transfer` log from the QR session start block and writes a local attendee record.
-- A current standalone APK was built successfully with `npm run android:standalone-apk` at 2026-07-12 18:15 IST: `android/app/build/outputs/apk/release/app-release.apk`, SHA-256 `902cc1b9613e9c37889a1d24f0e837bd29687a44df8655ac580082832a96cd3c`.
+- Latest standalone APK: `npm run android:standalone-apk` at 2026-07-13 13:31 IST → `android/app/build/outputs/apk/release/app-release.apk`, 198 MB, SHA-256 `e4c05e0d86694002d1e8d8d7068c4b4a1bbfc4c7eaf18866489e068ee1cc84e9`.

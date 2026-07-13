@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { buildTicketOfferQr, createCheckInCode } from '@/features/tickets/qr-payload';
+import { buildTicketOfferQr, createCheckInCode, createReceiptId } from '@/features/tickets/qr-payload';
+import { buildTicketProofQr } from '@/features/tickets/ticket-proof';
 import type {
   AttendeeRecord,
   PaymentSession,
@@ -13,6 +14,7 @@ const TICKETS_KEY = '@meshipay/tickets_v2';
 const ATTENDEES_KEY = '@meshipay/attendees_v1';
 const SESSIONS_KEY = '@meshipay/sessions_v1';
 const PAID_SESSIONS_KEY = '@meshipay/paid_sessions_v1';
+const CONSUMED_PROOFS_KEY = '@meshipay/consumed_proofs_v1';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -69,7 +71,32 @@ export async function saveAttendees(attendees: AttendeeRecord[]): Promise<void> 
 }
 
 export async function clearTicketData(): Promise<void> {
-  await AsyncStorage.multiRemove([TICKETS_KEY, ATTENDEES_KEY, SESSIONS_KEY, PAID_SESSIONS_KEY]);
+  await AsyncStorage.multiRemove([TICKETS_KEY, ATTENDEES_KEY, SESSIONS_KEY, PAID_SESSIONS_KEY, CONSUMED_PROOFS_KEY]);
+}
+
+export async function isTicketProofConsumed(ticketId: string): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(CONSUMED_PROOFS_KEY);
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) && parsed.includes(ticketId);
+  } catch {
+    return false;
+  }
+}
+
+export async function consumeTicketProof(ticketId: string): Promise<void> {
+  const raw = await AsyncStorage.getItem(CONSUMED_PROOFS_KEY);
+  let consumed: string[] = [];
+  try {
+    const parsed = raw ? JSON.parse(raw) as unknown : [];
+    consumed = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    consumed = [];
+  }
+  if (!consumed.includes(ticketId)) {
+    await AsyncStorage.setItem(CONSUMED_PROOFS_KEY, JSON.stringify([ticketId, ...consumed]));
+  }
 }
 
 export async function loadPaidSessions(): Promise<string[]> {
@@ -150,6 +177,7 @@ export function createTicketFromDraft(
     currency: 'USDT_SEPOLIA',
     quantity: input.quantity,
     remainingQuantity: input.quantity,
+    location: input.location,
     receiverAddress,
     status: 'draft',
     checkInCode: createCheckInCode(),
@@ -200,17 +228,21 @@ export async function addReceivedTicket(ticket: TicketRecord): Promise<TicketRec
 /** Local proof after a decentralized MatchSale purchase; no inventory is stored remotely. */
 export async function mintReceivedTicketFromMatch(params: { match: PublishedMatch; quantity: number; senderAddress: string; txHash: string }): Promise<TicketRecord[]> {
   const timestamp = nowIso();
+  const sessionId = `match-${params.match.matchId}`;
   const ticket: TicketRecord = {
     ticketId: `match-${params.match.matchId}-${params.txHash.slice(2, 10)}`,
     kind: 'received', eventName: params.match.eventName, homeTeam: params.match.homeTeam, awayTeam: params.match.awayTeam,
     venue: params.match.venue, gate: 'EVENT GATE', seatLabel: `${params.quantity} GENERAL ADMISSION`,
-    startAt: params.match.startAt, endAt: params.match.startAt, priceUsdt: params.match.priceUsdt,
+    startAt: params.match.startAt,
+    endAt: new Date(new Date(params.match.startAt).getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    priceUsdt: params.match.priceUsdt,
     currency: 'USDT_SEPOLIA', quantity: params.quantity, remainingQuantity: params.quantity,
-    receiverAddress: params.match.clubAddress, senderAddress: params.senderAddress, txHash: params.txHash,
+    receiverAddress: params.match.clubAddress, senderAddress: params.senderAddress, sessionId, receiptId: createReceiptId(), txHash: params.txHash,
     status: 'transferred', checkInCode: createCheckInCode(), location: params.match.location,
     matchSaleAddress: params.match.saleAddress, matchId: params.match.matchId, createdAt: timestamp, updatedAt: timestamp,
   };
-  return addReceivedTicket(ticket);
+  const proofQr = await buildTicketProofQr(ticket);
+  return addReceivedTicket(proofQr ? { ...ticket, ticketQrPayload: proofQr } : ticket);
 }
 
 export async function addAttendee(attendee: AttendeeRecord): Promise<AttendeeRecord[]> {

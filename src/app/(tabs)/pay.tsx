@@ -1,25 +1,86 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PitchScreen } from '@/components/layout/pitch-screen';
 import { PaymentConfirmCard } from '@/components/pay/payment-confirm-card';
 import { QrScanner } from '@/components/pay/qr-scanner';
+import { QrCodeView } from '@/components/tickets/qr-code-view';
 import { MeshipayLoadingOverlay } from '@/components/ui/meshipay-loading-overlay';
 import { WalletConnectButton } from '@/components/wallet/wallet-connect-button';
 import { MeshipayBrand } from '@/constants/meshipay-brand';
 import { useAccount, useWdkApp } from '@/features/wdk/wdk-hooks';
+import { buyMatchTickets, type EvmAccountExtension } from '@/features/matches/registry';
+import { mintReceivedTicketFromMatch } from '@/features/tickets/ticket-storage';
+import { useTickets } from '@/features/tickets/tickets-context';
 import { usePaySwipeLock } from '@/hooks/use-pay-swipe-lock';
 import { usePaymentFlow } from '@/hooks/use-payment-flow';
 
+type MatchCheckout = { saleAddress: string; matchId: string; eventName: string; homeTeam: string; awayTeam: string; venue: string; priceUsdt: string; capacity: number; remaining: number; startAt: string; clubAddress: string };
+function asParam(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] ?? '' : value ?? ''; }
+
 export default function PayScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<Record<string, string | string[]>>();
   const isFocused = useIsFocused();
   const { setLocked } = usePaySwipeLock();
   const { state } = useWdkApp();
-  const { address } = useAccount({ network: 'ethereum', accountIndex: 0 });
+  const account = useAccount({ network: 'ethereum', accountIndex: 0 }) as unknown as ReturnType<typeof useAccount> & { extension: <T extends object>() => T };
+  const { address } = account;
+  const tickets = useTickets();
   const walletReady = state.status === 'READY' && !!address;
   const [scanKey, setScanKey] = useState(0);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  const checkout = useMemo<MatchCheckout | null>(() => {
+    const saleAddress = asParam(params.saleAddress);
+    if (!saleAddress) return null;
+    return {
+      saleAddress,
+      matchId: asParam(params.matchId),
+      eventName: asParam(params.eventName),
+      homeTeam: asParam(params.homeTeam),
+      awayTeam: asParam(params.awayTeam),
+      venue: asParam(params.venue),
+      priceUsdt: asParam(params.priceUsdt),
+      capacity: Number(asParam(params.capacity)),
+      remaining: Number(asParam(params.remaining)),
+      startAt: asParam(params.startAt),
+      clubAddress: asParam(params.clubAddress),
+    };
+  }, [params]);
+
+  const completeMatchPurchase = async () => {
+    if (!checkout || !walletReady || !address) return;
+    setCheckoutBusy(true);
+    try {
+      const result = await buyMatchTickets(account.extension<EvmAccountExtension>(), checkout.saleAddress, checkout.priceUsdt, 1);
+      await mintReceivedTicketFromMatch({
+        match: { matchId: checkout.matchId, saleAddress: checkout.saleAddress, clubAddress: checkout.clubAddress, eventName: checkout.eventName, homeTeam: checkout.homeTeam, awayTeam: checkout.awayTeam, venue: checkout.venue, location: { latitude: 0, longitude: 0 }, startAt: checkout.startAt, priceUsdt: checkout.priceUsdt, priceAtomic: '0', capacity: checkout.capacity },
+        quantity: 1,
+        senderAddress: address,
+        txHash: result.hash,
+      });
+      await tickets.refresh();
+      Alert.alert('Ticket purchased', 'Your verified entry QR is now in Tickets.', [
+        { text: 'VIEW TICKET', onPress: () => router.replace('/tickets') },
+        { text: 'STAY HERE', style: 'cancel' },
+      ]);
+    } catch (error) {
+      Alert.alert('Purchase failed', error instanceof Error ? error.message : 'Unable to buy this ticket.');
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
+
+  const confirmMatchPurchase = () => {
+    Alert.alert('Confirm ticket purchase', `${checkout?.eventName}\n${checkout?.priceUsdt} test USDT\n\nBuy one entry pass now?`, [
+      { text: 'NO', style: 'cancel' },
+      { text: 'YES, BUY 1', onPress: () => void completeMatchPurchase() },
+    ]);
+  };
 
   const {
     step,
@@ -77,6 +138,8 @@ export default function PayScreen() {
           onPay={handlePay}
           onCancel={cancelConfirm}
         />
+      ) : checkout ? (
+        <MatchCheckoutCard checkout={checkout} walletReady={walletReady} loading={checkoutBusy} onBuy={confirmMatchPurchase} onCancel={() => router.replace('/(tabs)/map' as never)} />
       ) : (
         <Pressable
           accessibilityRole="button"
@@ -96,6 +159,29 @@ export default function PayScreen() {
         </Pressable>
       )}
     </PitchScreen>
+  );
+}
+
+function MatchCheckoutCard({ checkout, walletReady, loading, onBuy, onCancel }: { checkout: MatchCheckout; walletReady: boolean; loading: boolean; onBuy: () => void; onCancel: () => void }) {
+  const qr = JSON.stringify({ v: 1, kind: 'meshipay-match-checkout', matchId: checkout.matchId, saleAddress: checkout.saleAddress, eventName: checkout.eventName, priceUsdt: checkout.priceUsdt });
+  return (
+    <View style={styles.checkoutWrap}>
+      <View style={styles.checkoutShadow} />
+      <View style={styles.checkoutCard}>
+        <Text style={styles.checkoutEyebrow}>MAP CHECKOUT</Text>
+        <Text style={styles.checkoutTitle}>{checkout.eventName}</Text>
+        <Text style={styles.checkoutCopy}>{checkout.homeTeam} vs {checkout.awayTeam}</Text>
+        <Text style={styles.checkoutCopy}>{checkout.venue}</Text>
+        <Text style={styles.checkoutCopy}>KICKOFF: {new Date(checkout.startAt).toLocaleString()}</Text>
+        <Text style={styles.checkoutPrice}>{checkout.priceUsdt} USDT · {checkout.remaining} SEATS LEFT</Text>
+        <View style={styles.checkoutQr}><QrCodeView value={qr} size={150} /></View>
+        <Text style={styles.checkoutHint}>Confirm once. WDK settles the ticket on Sepolia and saves the entry proof locally.</Text>
+        <View style={styles.checkoutActions}>
+          <Pressable accessibilityRole="button" disabled={!walletReady || loading} onPress={onBuy} style={[styles.checkoutBuy, (!walletReady || loading) && styles.disabled]}><Text style={styles.checkoutButtonText}>{loading ? 'PAYING…' : 'YES, BUY 1'}</Text></Pressable>
+          <Pressable accessibilityRole="button" disabled={loading} onPress={onCancel} style={styles.checkoutCancel}><Text style={styles.checkoutCancelText}>NO</Text></Pressable>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -149,4 +235,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.85,
   },
+  checkoutWrap: { position: 'relative', marginTop: 8 },
+  checkoutShadow: { position: 'absolute', left: 0, right: 0, bottom: -5, top: 5, borderRadius: 16, backgroundColor: MeshipayBrand.border },
+  checkoutCard: { borderWidth: 3, borderColor: MeshipayBrand.border, borderRadius: 16, backgroundColor: MeshipayBrand.backgroundElevated, padding: 16, alignItems: 'center', gap: 6 },
+  checkoutEyebrow: { color: MeshipayBrand.primary, fontSize: 12, fontWeight: '900', letterSpacing: 1.2 },
+  checkoutTitle: { color: MeshipayBrand.foreground, fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  checkoutCopy: { color: MeshipayBrand.muted, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  checkoutPrice: { color: MeshipayBrand.primary, fontSize: 15, fontWeight: '900', marginTop: 4 },
+  checkoutQr: { marginVertical: 10, padding: 10, borderRadius: 10, backgroundColor: MeshipayBrand.cream },
+  checkoutHint: { color: MeshipayBrand.muted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  checkoutActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  checkoutBuy: { borderWidth: 3, borderColor: MeshipayBrand.border, borderRadius: 10, backgroundColor: MeshipayBrand.primary, paddingHorizontal: 14, paddingVertical: 11 },
+  checkoutCancel: { borderWidth: 3, borderColor: MeshipayBrand.border, borderRadius: 10, backgroundColor: MeshipayBrand.cream, paddingHorizontal: 18, paddingVertical: 11 },
+  checkoutButtonText: { color: MeshipayBrand.border, fontSize: 12, fontWeight: '900' },
+  checkoutCancelText: { color: MeshipayBrand.border, fontSize: 12, fontWeight: '900' },
+  disabled: { opacity: 0.5 },
 });

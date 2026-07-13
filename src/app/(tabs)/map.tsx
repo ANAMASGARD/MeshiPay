@@ -1,7 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { Atmosphere, Camera, MapView, PointAnnotation, setAccessToken, type Camera as CameraRef, type MapState } from '@rnmapbox/maps';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MeshipayBrand, NeoBrutalShadow } from '@/constants/meshipay-brand';
@@ -15,9 +17,9 @@ import {
   parseMapboxPlaceSearchResults,
   type MapboxPlaceSearchResult,
 } from '@/features/map/map-utils';
-import { buyMatchTickets, fetchPublishedMatches, fetchRemainingCapacity, isMatchRegistryConfigured, type EvmAccountExtension, type PublishedMatch } from '@/features/matches/registry';
-import { mintReceivedTicketFromMatch } from '@/features/tickets/ticket-storage';
-import { useTickets } from '@/features/tickets/tickets-context';
+import { fetchPublishedMatches, fetchRemainingCapacity, getPublishedMatchFromTransaction, isMatchRegistryConfigured, type EvmAccountExtension, type PublishedMatch } from '@/features/matches/registry';
+import { loadCachedMatches, matchFromTicket, mergeMatches, saveCachedMatches } from '@/features/matches/match-storage';
+import { loadTickets, upsertTicket } from '@/features/tickets/ticket-storage';
 import { useAccount } from '@/features/wdk/wdk-hooks';
 
 const mapboxAccessToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
@@ -33,6 +35,8 @@ type MapStatus =
 
 export default function MapScreen() {
   const cameraRef = useRef<CameraRef>(null);
+  const router = useRouter();
+  const isFocused = useIsFocused();
   const [cameraZoom, setCameraZoom] = useState(MAP_INITIAL_CAMERA.zoomLevel);
   const [mapReloadKey, setMapReloadKey] = useState(0);
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading', message: 'LOADING THE PITCH...' });
@@ -44,20 +48,55 @@ export default function MapScreen() {
   const [matches, setMatches] = useState<PublishedMatch[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<PublishedMatch | null>(null);
   const account = useAccount({ network: 'ethereum', accountIndex: 0 }) as unknown as { address: string | null; extension: <T extends object>() => T };
-  const tickets = useTickets();
+  const { extension } = account;
+  const extensionRef = useRef(extension);
+  extensionRef.current = extension;
 
   const hasToken = hasMapboxAccessToken(mapboxAccessToken);
 
   const refreshMatches = useCallback(async () => {
-    if (!isMatchRegistryConfigured()) return;
+    const tickets = await loadTickets();
+    const cached = await loadCachedMatches();
+    const localMatches = tickets.map(matchFromTicket).filter((match): match is PublishedMatch => Boolean(match));
+    // Render durable local/cached pins before any RPC or bundler request.
+    // A slow UserOperation lookup must never leave the map visually empty.
+    const durableFallback = mergeMatches(cached, localMatches);
+    if (durableFallback.length > 0) setMatches(durableFallback);
+
+    const pendingTickets = tickets.filter((ticket) => ticket.registryTxHash && (!ticket.matchId || !ticket.matchSaleAddress));
+    const resolvedPending = await Promise.all(pendingTickets.map(async (ticket) => {
+      try {
+        const resolved = await Promise.race([
+          getPublishedMatchFromTransaction(ticket.registryTxHash!, extensionRef.current<EvmAccountExtension>()),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+        ]);
+        if (resolved) {
+          await upsertTicket({ ...ticket, matchId: resolved.matchId, matchSaleAddress: resolved.saleAddress, location: resolved.location, updatedAt: new Date().toISOString() });
+          return resolved;
+        }
+      } catch {
+        // Keep the local pin visible while the UserOperation propagates.
+      }
+      return null;
+    }));
+    const resolvedLocalMatches = mergeMatches(
+      localMatches,
+      resolvedPending.filter((match): match is PublishedMatch => Boolean(match)),
+    );
+
     try {
-      const discovered = await fetchPublishedMatches();
-      const withCapacity = await Promise.all(discovered.map(async (match) => ({ ...match, remaining: await fetchRemainingCapacity(match.saleAddress).catch(() => undefined) })));
-      setMatches(withCapacity);
-    } catch { setStatus({ kind: 'error', message: 'MATCHES COULD NOT SYNC. CHECK YOUR CONNECTION.', action: 'reload' }); }
+      const discovered = isMatchRegistryConfigured() ? await fetchPublishedMatches() : [];
+      const withCapacity = await Promise.all(discovered.map(async (match) => ({ ...match, remaining: match.saleAddress ? await fetchRemainingCapacity(match.saleAddress).catch(() => undefined) : match.remaining })));
+      const nextMatches = mergeMatches(cached, resolvedLocalMatches, withCapacity);
+      setMatches(nextMatches);
+      await saveCachedMatches(nextMatches);
+    } catch {
+      setMatches(durableFallback);
+      setStatus({ kind: 'error', message: durableFallback.length > 0 ? 'SHOWING SAVED MATCH PINS — LIVE SYNC RETRYING.' : 'MATCHES COULD NOT SYNC. CHECK YOUR CONNECTION.', action: 'reload' });
+    }
   }, []);
 
-  useEffect(() => { void refreshMatches(); }, [refreshMatches]);
+  useEffect(() => { if (isFocused) void refreshMatches(); }, [isFocused, refreshMatches]);
 
   const changeZoom = (direction: 'in' | 'out') => {
     const nextZoom = getNextZoom(cameraZoom, direction);
@@ -112,17 +151,20 @@ export default function MapScreen() {
   const buySelectedMatch = () => {
     if (!selectedMatch || !account.address) { Alert.alert('Wallet required', 'Connect your wallet before buying a match ticket.'); return; }
     if ((selectedMatch.remaining ?? 0) < 1) { Alert.alert('Sold out', 'This event is sold out.'); return; }
-    Alert.alert('Buy ticket', `${selectedMatch.eventName}\n${selectedMatch.priceUsdt} test USDT`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'BUY 1', onPress: () => void (async () => {
-        try {
-          const result = await buyMatchTickets(account.extension<EvmAccountExtension>(), selectedMatch.saleAddress, selectedMatch.priceUsdt, 1);
-          await mintReceivedTicketFromMatch({ match: selectedMatch, quantity: 1, senderAddress: account.address!, txHash: result.hash });
-          await tickets.refresh(); await refreshMatches(); setSelectedMatch(null);
-          Alert.alert('Ticket saved', 'Your on-chain purchase is now in Tickets.');
-        } catch (error) { Alert.alert('Purchase failed', error instanceof Error ? error.message : 'Unable to buy this ticket.'); }
-      }) },
-    ]);
+    if (!selectedMatch.saleAddress) { Alert.alert('Purchase unavailable', 'This saved marker is waiting for its on-chain sale address to sync.'); return; }
+    router.push({ pathname: '/pay', params: {
+      saleAddress: selectedMatch.saleAddress,
+      matchId: selectedMatch.matchId,
+      eventName: selectedMatch.eventName,
+      homeTeam: selectedMatch.homeTeam,
+      awayTeam: selectedMatch.awayTeam,
+      venue: selectedMatch.venue,
+      priceUsdt: selectedMatch.priceUsdt,
+      capacity: String(selectedMatch.capacity),
+      remaining: String(selectedMatch.remaining ?? selectedMatch.capacity),
+      startAt: selectedMatch.startAt,
+      clubAddress: selectedMatch.clubAddress,
+    }} as never);
   };
 
   const handleMapReady = () => setStatus({ kind: 'ready', message: 'SEARCH A PLACE OR DRAG THE GLOBE' });
@@ -218,7 +260,7 @@ function PlaceSearchModal({ visible, query, results, isSearching, error, onChang
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalScrim}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={24} style={styles.keyboardAvoider}>
         <View style={styles.searchPanel}>
           <View style={styles.searchHeader}>
             <View>
@@ -258,7 +300,7 @@ function PlaceSearchModal({ visible, query, results, isSearching, error, onChang
           ))}
           {!isSearching && !error && results.length === 0 ? <Text style={styles.searchFeedback}>SEARCH RESULTS ARE TEMPORARY AND ARE NOT SAVED BY MESHiPAY.</Text> : null}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -306,7 +348,8 @@ const styles = StyleSheet.create({
   setupTitle: { marginTop: 14, color: MeshipayBrand.primary, fontSize: 22, fontWeight: '900', letterSpacing: 1 },
   setupCopy: { marginTop: 8, color: MeshipayBrand.muted, fontSize: 14, fontWeight: '600', lineHeight: 20, textAlign: 'center' },
   modalScrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.56)' },
-  searchPanel: { minHeight: 340, padding: 18, borderTopWidth: 3, borderColor: MeshipayBrand.border, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: MeshipayBrand.backgroundElevated, ...NeoBrutalShadow.md },
+  keyboardAvoider: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.56)' },
+  searchPanel: { minHeight: 430, maxHeight: '86%', paddingTop: 26, paddingHorizontal: 18, paddingBottom: 22, borderTopWidth: 3, borderColor: MeshipayBrand.border, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: MeshipayBrand.backgroundElevated, ...NeoBrutalShadow.md },
   searchHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
   searchTitle: { color: MeshipayBrand.primary, fontSize: 21, fontWeight: '900', letterSpacing: 1.1 },
   searchHint: { marginTop: 3, color: MeshipayBrand.muted, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
